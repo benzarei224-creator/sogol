@@ -46,7 +46,7 @@
       annualGoals: JSON.parse(JSON.stringify(D.annualGoals)),
       events: [], habits: JSON.parse(JSON.stringify(D.habits)), habitLog: {}, days: {},
       finance: { cats: JSON.parse(JSON.stringify(D.expenseCats)), expenses: [], savings: {} },
-      reviews: {}, books: [], meals: {}, shopping: [], ideas: [], photos: {}
+      reviews: {}, books: [], meals: {}, mealPlan: {}, shopping: [], ideas: [], photos: {}, lists: []
     };
   }
   function load() {
@@ -118,7 +118,42 @@
     if (m === 12 && d === 29 && J.isLeap(y)) { /* ۲۹ اسفند در سال کبیسه هم تعطیل است */ }
     return out;
   }
-  const eventsOn = (y, m, d) => S.events.filter((e) => e.m === m && e.d === d && (!e.y || e.y === y));
+  /* رویدادها: سالانه/یک‌باره (با بازه‌ی چندروزه)، ماهانه، هفتگی، یک روز در میان */
+  const REC = (e) => e.repeat === 'weekly' || e.repeat === 'alt';
+  function spanStart(e, y, m, d) {
+    if (!e.m || !e.d) return null;
+    const n = J.dayNumber(y, m, d), span = e.span || 1;
+    for (const yy of [y, y - 1]) {
+      if (e.y && e.y !== yy) continue;
+      if (e.d > J.monthLength(yy, e.m)) continue;
+      const s = J.dayNumber(yy, e.m, e.d);
+      if (n >= s && n < s + span) return { s, i: n - s };
+    }
+    return null;
+  }
+  function eventMatch(e, y, m, d) {
+    const n = J.dayNumber(y, m, d);
+    if (e.from && n < dn(e.from)) return false;
+    if (e.repeat === 'weekly') return (e.wd || []).includes(J.weekday(y, m, d));
+    if (e.repeat === 'alt') { const df = n - dn(e.anchor || e.from || todayKey()); return df >= 0 && df % 2 === 0; }
+    if (e.repeat === 'monthly') return e.d === 'last' ? d === J.monthLength(y, m) : d === e.d;
+    return !!spanStart(e, y, m, d);
+  }
+  const eventsOn = (y, m, d) => S.events.filter((e) => eventMatch(e, y, m, d));
+  const evIcon = (e, big) => e.emoji ? `<span class="emo"${big ? ' style="font-size:17px"' : ''}>${e.emoji}</span>` : ic(e.kind === 'heart' ? 'heartFill' : e.kind === 'cake' ? 'cake' : e.kind === 'gift' ? 'gift' : 'starFill');
+  const timeTxt = (e) => (e.time ? `<span class="chip sage" style="font-size:11px">${fa(e.time)}</span>` : '');
+  const telBtn = (e) => (e.tel ? `<a class="chip" href="tel:${esc(e.tel)}" style="text-decoration:none">📞 تماس</a>` : '');
+  function repeatText(e) {
+    if (e.repeat === 'weekly') return 'هر هفته: ' + (e.wd || []).map((w) => WD[w]).join('، ');
+    if (e.repeat === 'alt') return 'یک روز در میان';
+    if (e.repeat === 'monthly') return e.d === 'last' ? 'آخر هر ماه' : `${fa(e.d)}ام هر ماه`;
+    if (!e.m) return 'تاریخ نامشخص';
+    if (!e.d) return `${MONTHS[e.m - 1]} (روز متغیر)`;
+    const span = e.span || 1;
+    const end = span > 1 ? J.addDays(e.y || todayJ().y, e.m, e.d, span - 1) : null;
+    const rng = end ? `${fa(e.d)}${end.jm === e.m ? '' : ' ' + MONTHS[e.m - 1]} تا ${fa(end.jd)} ${MONTHS[end.jm - 1]}` : `${fa(e.d)} ${MONTHS[e.m - 1]}`;
+    return rng + (e.y ? ` ${fa(e.y)}` : ' · هر سال');
+  }
   const dayData = (k) => S.days[k] || {};
   const ensureDay = (k) => (S.days[k] = S.days[k] || {});
   const habitDone = (k, id) => (S.habitLog[k] || []).includes(id);
@@ -150,21 +185,20 @@
     const t0 = dn(todayKey()), out = [];
     for (let i = 0; i <= days; i++) {
       const k = fromDn(t0 + i), p = parse(k);
-      eventsOn(p.y, p.m, p.d).forEach((e) => out.push({ k, i, t: e.title, kind: e.kind || 'star', personal: true }));
+      eventsOn(p.y, p.m, p.d).forEach((e) => { const ss = spanStart(e, p.y, p.m, p.d); if (ss && ss.i > 0 && i > 0) return; out.push({ k, i, t: e.title, kind: e.kind || 'star', emoji: e.emoji, ev: e, personal: true }); });
       holidaysOn(p.y, p.m, p.d).forEach((h) => out.push({ k, i, t: h.t, kind: h.off ? 'hol' : 'cul', personal: false }));
       (dayData(k).items || []).forEach((it) => out.push({ k, i, t: it.text, kind: 'item', emoji: it.emoji, personal: true }));
     }
     return out;
   }
   function nextOccurrence(e) {
-    if (!e.m) return null;
-    const t = todayJ();
-    for (let yy = t.y; yy <= t.y + 1; yy++) {
-      if (e.y && e.y !== yy) continue;
-      const d = e.d || 1; if (d > J.monthLength(yy, e.m)) continue;
-      const k = key(yy, e.m, d), diff = dn(k) - dn(todayKey());
-      if (diff >= 0 || (!e.d && e.m === t.m && yy === t.y)) return { k, diff: Math.max(diff, 0) };
+    const t0 = dn(todayKey());
+    if (!e.repeat && e.m && !e.d) {
+      const t = todayJ();
+      for (let yy = t.y; yy <= t.y + 1; yy++) { if (e.y && e.y !== yy) continue; const df = J.dayNumber(yy, e.m, 1) - t0; if (df >= 0 || (e.m === t.m && yy === t.y)) return { k: key(yy, e.m, 1), diff: Math.max(df, 0) }; }
+      return null;
     }
+    for (let i = 0; i <= 400; i++) { const k = fromDn(t0 + i), p = parse(k); if (eventMatch(e, p.y, p.m, p.d)) return { k, diff: i }; }
     return null;
   }
 
@@ -251,19 +285,26 @@
     const len = J.monthLength(y, m), rows = [];
     for (let d = 1; d <= len; d++) {
       const k = key(y, m, d);
-      eventsOn(y, m, d).forEach((e) => rows.push({ k, t: e.title, kind: e.kind || 'star' }));
+      eventsOn(y, m, d).forEach((e) => {
+        if (REC(e)) return;
+        const ss = spanStart(e, y, m, d);
+        if (ss && ss.i > 0 && d > 1) return;
+        rows.push({ k, t: e.title, kind: e.kind || 'star', ev: e, rng: (e.span || 1) > 1 ? repeatText({ ...e, y: undefined }).replace(' · هر سال', '') : null });
+      });
       holidaysOn(y, m, d).forEach((h) => rows.push({ k, t: h.t, kind: h.off ? 'hol' : 'cul' }));
       (dayData(k).items || []).forEach((it) => rows.push({ k, t: it.text, kind: 'item', emoji: it.emoji }));
     }
-    S.events.filter((e) => e.m === m && !e.d).forEach((e) => rows.push({ k: null, t: e.title, kind: e.kind || 'star' }));
+    S.events.filter((e) => !e.repeat && e.m === m && !e.d).forEach((e) => rows.push({ k: null, t: e.title, kind: e.kind || 'star', ev: e }));
+    const recs = S.events.filter(REC);
     const t0 = dn(todayKey());
     const body = rows.length ? rows.map((r) => {
       const diff = r.k ? dn(r.k) - t0 : null;
-      const chip = r.k ? `<span class="chip ${r.kind === 'hol' ? 'red' : ''}">${shortDate(r.k)}</span>` : `<span class="chip peach">${MONTHS[m - 1]}</span>`;
-      const icon = r.kind === 'item' ? `<span style="font-size:17px">${r.emoji || '📌'}</span>` : r.kind === 'hol' ? ic('flag') : r.kind === 'cul' ? ic('sparkle') : ic(r.kind === 'heart' ? 'heartFill' : r.kind === 'cake' ? 'cake' : r.kind === 'gift' ? 'gift' : 'star');
-      return `<div class="ev" ${r.k ? `data-a="openDay" data-k="${r.k}"` : ''}>${icon}<div class="t">${esc(r.t)}${r.kind === 'hol' ? ' <span class="tiny faint">(تعطیل)</span>' : ''}</div>${diff !== null && diff >= 0 && diff <= 60 ? `<span class="cd">${countdown(diff)}</span>` : ''}${chip}</div>`;
+      const chip = r.rng ? `<span class="chip">${r.rng}</span>` : r.k ? `<span class="chip ${r.kind === 'hol' ? 'red' : ''}">${shortDate(r.k)}</span>` : `<span class="chip peach">${MONTHS[m - 1]}</span>`;
+      const icon = r.ev ? evIcon(r.ev, true) : r.kind === 'item' ? `<span style="font-size:17px">${r.emoji || '📌'}</span>` : r.kind === 'hol' ? ic('flag') : r.kind === 'cul' ? ic('sparkle') : ic('star');
+      return `<div class="ev" ${r.k ? `data-a="openDay" data-k="${r.k}"` : ''}>${icon}<div class="t">${esc(r.t)}${r.kind === 'hol' ? ' <span class="tiny faint">(تعطیل)</span>' : ''}${r.ev && r.ev.time ? ` <span class="tiny muted">ساعت ${fa(r.ev.time)}</span>` : ''}</div>${diff !== null && diff >= 0 && diff <= 60 && !r.rng ? `<span class="cd">${countdown(diff)}</span>` : ''}${chip}</div>`;
     }).join('') : '<div class="empty">مناسبتی برای این ماه ثبت نشده</div>';
-    return card('a-events', 'gift', 'مناسبت‌های ماه', body, `<button class="act no-print" data-a="addEvent">+ افزودن</button>`) ;
+    const recHtml = recs.length ? `<div class="tiny muted" style="margin-top:10px;font-weight:700">برنامه‌های تکرارشونده</div><div class="opts" style="margin-top:4px">${recs.map((e) => `<span class="chip" title="${repeatText(e)}">${e.emoji || ''} ${esc(e.title)} · ${e.repeat === 'alt' ? 'یک روز در میان' : (e.wd || []).map((w) => WDS[w]).join('،')}</span>`).join('')}</div>` : '';
+    return card('a-events', 'gift', 'مناسبت‌های ماه', body + recHtml, `<button class="act no-print" data-a="addEvent">+ افزودن</button>`) ;
   }
   function goalsCard(k) {
     const i = periodOf(k);
@@ -360,7 +401,7 @@
       const off = hol.some((h) => h.off);
       const g = J.toDate(p.y, p.m, p.d).getDate();
       let marks = '';
-      evs.forEach((e) => { marks += `<span style="color:var(--rose)">${ic(e.kind === 'heart' ? 'heartFill' : e.kind === 'cake' ? 'cake' : e.kind === 'gift' ? 'gift' : 'starFill')}</span>`; });
+      evs.slice(0, 4).forEach((e) => { marks += `<span style="color:var(--rose)">${evIcon(e)}</span>`; });
       (dd.items || []).slice(0, 2).forEach((it) => { marks += `<span class="mood">${it.emoji || '📌'}</span>`; });
       if (dd.mood) marks += `<span class="mood">${dd.mood}</span>`;
       const hc = (S.habitLog[k] || []).length; if (hc && !out) marks += `<i class="dot" title="${fa(hc)} عادت"></i>`;
@@ -375,7 +416,7 @@
   function dayCard() {
     const k = ui.sel, p = parse(k), hol = holidaysOn(p.y, p.m, p.d), evs = eventsOn(p.y, p.m, p.d), dd = dayData(k);
     const list = [...hol.map((h) => `<div class="ev">${ic('flag')}<div class="t">${esc(h.t)}${h.off ? ' <span class="tiny faint">(تعطیل)</span>' : ''}</div></div>`),
-      ...evs.map((e) => `<div class="ev">${ic(e.kind === 'heart' ? 'heartFill' : 'cake')}<div class="t">${esc(e.title)}</div></div>`),
+      ...evs.slice().sort((a, b) => (a.time || '99').localeCompare(b.time || '99')).map((e) => `<div class="ev">${evIcon(e, true)}<div class="t">${esc(e.title)}${e.note ? `<div class="tiny muted">${esc(e.note)}</div>` : ''}</div>${telBtn(e)}${timeTxt(e)}</div>`),
       ...(dd.items || []).map((it) => `<div class="ev"><span style="font-size:17px">${it.emoji || '📌'}</span><div class="t">${esc(it.text)}</div><button class="x" data-a="delItem" data-k="${k}" data-id="${it.id}" aria-label="حذف">${ic('x')}</button></div>`)].join('');
     const i = periodOf(k);
     return card('a-day no-print', 'calendar', fullDate(k), `${i >= 0 ? `<div class="small muted">ماه ${ORD[i]} برنامه · ${esc(S.plan.periods[i].focus || '')}</div>` : ''}${list || '<div class="empty" style="padding:8px">رویدادی برای این روز نیست</div>'}
@@ -396,8 +437,12 @@
     upcoming(14).forEach((u) => {
       if (u.kind === 'cul' && u.i > 3) return;
       if (u.kind === 'hol' && u.i > 7) return;
+      if (u.ev && REC(u.ev)) return;
+      if (u.ev && u.ev.repeat === 'monthly' && u.i > 3) return;
       const icon = u.kind === 'hol' ? 'flag' : u.kind === 'item' ? 'bell' : u.kind === 'heart' ? 'heartFill' : u.kind === 'cake' ? 'cake' : 'star';
-      out.push({ icon, c: u.kind === 'hol' ? 'var(--holiday)' : 'var(--rose-deep)', soft: u.kind === 'hol' ? '#fbe3e6' : 'var(--rose-pale)', t: `${esc(u.t)}`, s: `${countdown(u.i)} · ${shortDate(u.k)}`, k: u.k });
+      const p = parse(u.k), ss = u.ev ? spanStart(u.ev, p.y, p.m, p.d) : null;
+      const when = ss && ss.i > 0 ? `در جریان · روز ${fa(ss.i + 1)} از ${fa(u.ev.span)}` : `${countdown(u.i)} · ${shortDate(u.k)}${u.ev && u.ev.time ? ' · ساعت ' + fa(u.ev.time) : ''}`;
+      out.push({ icon, emo: u.emoji, c: u.kind === 'hol' ? 'var(--holiday)' : 'var(--rose-deep)', soft: u.kind === 'hol' ? '#fbe3e6' : 'var(--rose-pale)', t: `${esc(u.t)}`, s: when, k: u.k, tel: u.ev && u.ev.tel ? u.ev : null });
     });
     const left = S.habits.filter((h) => !habitDone(tk, h.id)).length;
     if (left) out.push({ icon: 'listCheck', c: '#5f7a55', soft: 'var(--sage-soft)', t: `${fa(left)} مورد از چک‌لیست امروز مونده`, s: 'هر قدم کوچیک حساب میشه' });
@@ -409,16 +454,34 @@
     if (dn(tk) > dn(planEnd())) out.push({ icon: 'flag', c: 'var(--rose-deep)', soft: 'var(--rose-pale)', t: 'سال برنامه تموم شده! وقت برنامه‌ی سال جدیده', s: 'از بخش «برنامه ۱۲ ماهه»', h: 'more/plan' });
     return out;
   }
+  function redLinesCard() {
+    const rl = S.profile.redLines || [];
+    if (!rl.length) return '';
+    return `<section class="card" style="margin-top:12px;border-color:#efc3c9"><div class="card-b" style="padding:12px 16px"><div class="row" style="align-items:flex-start"><span style="font-size:20px">🚫</span><div class="grow"><b style="color:var(--danger)">خط قرمزهای ما</b><div class="opts" style="margin-top:6px">${rl.map((x) => `<span class="chip red" style="font-size:13px">${esc(x)}</span>`).join('')}</div></div></div></div></section>`;
+  }
+  function routineCard(k) {
+    const p = parse(k), rows = [];
+    (S.profile.routine || []).forEach((r) => rows.push({ t: r.t || '', x: r.x, e: r.e || '⏰' }));
+    eventsOn(p.y, p.m, p.d).forEach((e) => { const ss = spanStart(e, p.y, p.m, p.d); rows.push({ t: e.time || '', x: e.title + (ss && e.span > 1 ? ` (روز ${fa(ss.i + 1)} از ${fa(e.span)})` : ''), e: e.emoji || '⭐', ev: e }); });
+    rows.sort((a, b) => (a.t || '12:00').localeCompare(b.t || '12:00'));
+    const meal = (S.mealPlan || {})[wdOf(k)] || {};
+    const meals = meal.b || meal.l || meal.s ? `<div class="prompts" style="margin-top:10px;line-height:1.9">🍳 <b>صبحانه:</b> ${esc(meal.b || '—')}<br>🍲 <b>ناهار:</b> ${esc(meal.l || '—')}<br>🥗 <b>شام:</b> ${esc(meal.s || '—')}</div>` : '';
+    if (!rows.length && !meals) return '';
+    const body = rows.map((r) => `<div class="ev"><span style="font-size:17px">${r.e}</span><div class="t">${esc(r.x)}</div>${r.ev ? telBtn(r.ev) : ''}${r.t ? `<span class="chip sage" style="font-size:11px">${fa(r.t)}</span>` : ''}</div>`).join('') + meals;
+    return card('', 'clock', 'برنامه امروز', body, `<button class="act" data-a="go" data-h="more/meals">منو</button>`);
+  }
   function viewToday() {
     const tk = todayKey(), dd = dayData(tk), i = periodOf(tk);
     const rem = reminders();
-    const remHtml = rem.length ? rem.map((r) => `<div class="reminder" ${r.k ? `data-a="openDay" data-k="${r.k}"` : r.h ? `data-a="go" data-h="${r.h}"` : ''} style="--c:${r.c};--soft:${r.soft}"><span class="bub">${ic(r.icon)}</span><div class="grow"><div>${r.t}</div><div class="tiny muted">${r.s}</div></div></div>`).join('') : '<div class="empty">امروز یادآوری خاصی نداری 🌸</div>';
+    const remHtml = rem.length ? rem.map((r) => `<div class="reminder" ${r.k ? `data-a="openDay" data-k="${r.k}"` : r.h ? `data-a="go" data-h="${r.h}"` : ''} style="--c:${r.c};--soft:${r.soft}"><span class="bub">${r.emo ? `<span style="font-size:17px">${r.emo}</span>` : ic(r.icon)}</span><div class="grow"><div>${r.t}</div><div class="tiny muted">${r.s}</div></div>${r.tel ? telBtn(r.tel) : ''}</div>`).join('') : '<div class="empty">امروز یادآوری خاصی نداری 🌸</div>';
     const habits = S.habits.map((h) => { const on = habitDone(tk, h.id), st = streak(h); return `<button class="habit-row ${on ? 'on' : ''}" data-a="toggleHabit" data-k="${tk}" data-h="${h.id}"><span class="ring ${on ? 'on' : ''}" style="--c:${h.color}">${ic('check')}</span><span class="nm">${esc(h.name)}</span>${st > 1 ? `<span class="streak">🔥 ${fa(st)} روز</span>` : ''}</button>`; }).join('');
     const done = S.habits.filter((h) => habitDone(tk, h.id)).length;
     const items = (dd.items || []).map((it) => `<div class="ev"><span style="font-size:17px">${it.emoji || '📌'}</span><div class="t">${esc(it.text)}</div><button class="x" data-a="delItem" data-k="${tk}" data-id="${it.id}" aria-label="حذف">${ic('x')}</button></div>`).join('');
     const todaySpent = S.finance.expenses.filter((x) => x.date === tk).reduce((a, x) => a + x.amount, 0);
     return `${topbar(`سلام ${esc(S.profile.name)} ${ic('heartFill').replace('<svg', '<svg style="width:20px;height:20px;color:var(--rose)"')}`, fullDate(tk))}
       <section class="card quote"><div><div class="when">جمله‌ی امروز</div><p>${esc(quoteOf(tk))}</p></div><img class="blend" src="sprig2.webp" alt=""></section>
+      ${redLinesCard()}
+      ${routineCard(tk)}
       ${card('', 'bell', 'یادآوری‌ها', remHtml)}
       ${card('', 'heart', 'حالت امروز چطوره؟', moodRow(tk))}
       ${card('', 'listCheck', `چک‌لیست امروز <span class="tiny muted">(${fa(done)} از ${fa(S.habits.length)})</span>`, habits, `<button class="act" data-a="go" data-h="habits">همه</button>`)}
@@ -477,8 +540,10 @@
     ['plan', 'leaf', 'برنامه ۱۲ ماهه', 'اهداف هر ماه و فصل', '#94b58c', '#e3ecdd'],
     ['annual', 'heart', 'اهداف ثابت سالانه', 'عادت‌ها و قول‌های سال', '#d98b9b', '#fbe6e8'],
     ['events', 'gift', 'مناسبت‌ها', 'تولدها، سالگردها، شمارش معکوس', '#d98b9b', '#fbe6e8'],
-    ['books', 'book', 'کتابخانه من', 'کتاب‌ها و پیشرفت مطالعه', '#d99a6c', '#f9e6d6'],
-    ['meals', 'utensils', 'منوی هفتگی', 'برنامه غذا و لیست خرید', '#d98b9b', '#fbe6e8'],
+    ['lists', 'listCheck', 'چک‌لیست‌ها', 'کمد لباس، وسایل شخصی، داروها', '#94b58c', '#e3ecdd'],
+    ['lists/l-work', 'palette', 'برنامه کاری', 'برندینگ و کالکشن ماهانه', '#a99ab2', '#ece2ee'],
+    ['books', 'book', 'کتابخانه و چک‌لیست کتاب‌ها', 'کتاب‌ها و پیشرفت مطالعه', '#d99a6c', '#f9e6d6'],
+    ['meals', 'utensils', 'منوی هفتگی', 'صبحانه، ناهار، شام و لیست خرید', '#d98b9b', '#fbe6e8'],
     ['ideas', 'shirt', 'دفترچه ایده', 'ایده‌های طراحی لباس', '#a99ab2', '#ece2ee'],
     ['review', 'star', 'ارزیابی ماه', 'جمع‌بندی و درس‌ها', '#e1a25c', '#fbefd9'],
     ['settings', 'settings', 'پشتیبان و تنظیمات', 'خروجی، ورود فایل، نام', '#8d6e74', '#f1e6e4']
@@ -491,6 +556,7 @@
     if (s === 'events') return viewEvents();
     if (s === 'books') return viewBooks();
     if (s === 'meals') return viewMeals();
+    if (s === 'lists') return viewLists(location.hash.split('/')[3]);
     if (s === 'ideas') return viewIdeas();
     if (s === 'review') return `${backBtn()}${reviewCard(ui.y, ui.m)}${photoCard(ui.y, ui.m)}`;
     if (s === 'settings') return viewSettings();
@@ -523,9 +589,12 @@
     return `${backBtn()}${annualCard().replace('<button class="act no-print" data-a="go" data-h="more/annual">ویرایش</button>', '')}${card('', 'edit', 'ویرایش اهداف', rows + `<button class="btn soft block" style="margin-top:10px" data-a="addAnnual">${ic('plus')} هدف جدید</button>`)}`;
   }
   function viewEvents() {
-    const evs = S.events.map((e) => ({ e, n: nextOccurrence(e) })).sort((a, b) => (a.n ? a.n.diff : 9999) - (b.n ? b.n.diff : 9999));
-    const rows = evs.map(({ e, n }) => `<div class="ev" data-a="addEvent" data-id="${e.id}">${ic(e.kind === 'heart' ? 'heartFill' : e.kind === 'cake' ? 'cake' : e.kind === 'gift' ? 'gift' : 'star')}<div class="t">${esc(e.title)}<div class="tiny muted">${e.m ? (e.d ? `${fa(e.d)} ${MONTHS[e.m - 1]}` : MONTHS[e.m - 1]) : 'تاریخ نامشخص'}${e.y ? ` ${fa(e.y)}` : ' · هر سال'}</div></div>${n && e.d ? `<span class="cd">${countdown(n.diff)}</span>` : ''}</div>`).join('');
-    return `${backBtn()}${card('', 'gift', 'مناسبت‌های من', rows || '<div class="empty">مناسبتی ثبت نشده</div>', `<button class="act" data-a="addEvent">+ افزودن</button>`)}`;
+    const evs = S.events.map((e) => ({ e, n: nextOccurrence(e) })).sort((a, b) => (REC(a.e) - REC(b.e)) || ((a.n ? a.n.diff : 9999) - (b.n ? b.n.diff : 9999)));
+    const row = ({ e, n }) => `<div class="ev" data-a="addEvent" data-id="${e.id}">${evIcon(e, true)}<div class="t">${esc(e.title)}<div class="tiny muted">${repeatText(e)}${e.time ? ' · ساعت ' + fa(e.time) : ''}</div></div>${n && (e.d || e.repeat) && !REC(e) ? `<span class="cd">${countdown(n.diff)}</span>` : ''}</div>`;
+    const one = evs.filter((x) => !REC(x.e) && x.e.repeat !== 'monthly'), mon = evs.filter((x) => x.e.repeat === 'monthly'), rec = evs.filter((x) => REC(x.e));
+    return `${backBtn()}${card('', 'gift', 'مناسبت‌ها و برنامه‌های سالانه', one.map(row).join('') || '<div class="empty">مناسبتی ثبت نشده</div>', `<button class="act" data-a="addEvent">+ افزودن</button>`)}
+      ${mon.length ? card('', 'calendar', 'برنامه‌های ماهانه', mon.map(row).join('')) : ''}
+      ${rec.length ? card('', 'clock', 'برنامه‌های هفتگی', rec.map(row).join('')) : ''}`;
   }
   function seasonOf(k) { const p = parse(k); return `${p.y}-${Math.ceil(p.m / 3)}`; }
   function viewBooks() {
@@ -541,16 +610,63 @@
     return `${backBtn()}<div class="alert info">${ic('book')}<div>این فصل ${fa(finished)} کتاب تمام کردی؛ هدف: ${fa(2)} کتاب در هر فصل</div></div>${card('', 'book', 'کتابخانه من', rows || '<div class="empty">اولین کتابت رو اضافه کن</div>', `<button class="act" data-a="editBook">+ کتاب</button>`)}`;
   }
   function viewMeals() {
-    const tk = todayKey(), ws = fromDn(dn(weekStart(tk)) + ui.week), w = S.meals[ws] || {};
-    const rows = WD.map((d, i) => { const k = fromDn(dn(ws) + i), v = w[i] || {}; return `<div class="meal ${k === tk ? 'today' : ''}"><b>${d}<div class="tiny faint">${shortDate(k)}</div></b><input type="text" placeholder="ناهار" data-in="meal" data-w="${ws}" data-d="${i}" data-f="l" value="${esc(v.l || '')}"><input type="text" placeholder="شام" data-in="meal" data-w="${ws}" data-d="${i}" data-f="s" value="${esc(v.s || '')}"></div>`; }).join('');
+    const twd = wdOf(todayKey()), mp = S.mealPlan || {};
+    const rows = WD.map((d, i) => { const v = mp[i] || {}; return `<div class="mealday ${i === twd ? 'today' : ''}"><b>${d}${i === twd ? ' <span class="chip" style="font-size:10.5px">امروز</span>' : ''}</b>
+      ${[['b', '🍳 صبحانه'], ['l', '🍲 ناهار'], ['s', '🥗 شام']].map(([f, l]) => `<label class="ml"><span>${l}</span><input type="text" data-in="meal" data-d="${i}" data-f="${f}" value="${esc(v[f] || '')}"></label>`).join('')}</div>`; }).join('');
     const shop = S.shopping.map((s) => `<div class="listrow ${s.done ? 'done' : ''}">${ring(s.done, 'var(--sage)', 'toggleShop', `data-id="${s.id}"`)}<span class="t">${esc(s.text)}</span><button class="x" data-a="delShop" data-id="${s.id}">${ic('x')}</button></div>`).join('');
-    return `${backBtn()}${card('', 'utensils', 'منوی هفتگی', rows, `<span class="row"><button class="icon-btn" style="width:30px;height:30px" data-a="week" data-n="-7">${ic('chevR')}</button><button class="icon-btn" style="width:30px;height:30px" data-a="week" data-n="7">${ic('chevL')}</button></span>`)}
+    return `${backBtn()}${card('', 'utensils', 'منوی ثابت هفتگی', `<div class="tiny muted" style="margin-bottom:6px">این منو هر هفته تکرار میشه و هر روز توی صفحه‌ی «امروز» نشون داده میشه.</div>${rows}`)}
       ${card('', 'cart', 'لیست خرید', `${shop || '<div class="empty" style="padding:6px">لیست خالیه</div>'}<div class="row" style="margin-top:8px"><input id="shop-new" type="text" class="grow" placeholder="مثلاً: سبزی تازه"><button class="btn" data-a="addShop">${ic('plus')}</button></div>${S.shopping.some((s) => s.done) ? '<button class="btn ghost" data-a="clearShop" style="margin-top:6px">پاک کردن خریدهای انجام‌شده</button>' : ''}`)}`;
   }
-  function viewIdeas() {
-    const items = [...S.ideas].reverse().map((x) => { const u = x.img ? IMG.url(x.img) : null; return `<button class="idea" data-a="editIdea" data-id="${x.id}"><div class="im" style="${u ? `background-image:url('${u}')` : ''}">${u ? '' : ic('shirt')}</div><div class="tx"><b>${esc(x.title)}</b><span>${shortDate(x.date)}</span></div></button>`; }).join('');
-    return `${backBtn()}${card('', 'shirt', 'دفترچه ایده طراحی لباس', items ? `<div class="ideas">${items}</div>` : '<div class="empty">ایده‌ها، طرح‌ها و الهام‌هات رو اینجا جمع کن</div>', `<button class="act" data-a="editIdea">+ ایده</button>`)}`;
+
+  /* ---------- چک‌لیست‌ها ---------- */
+  const itemDone = (it) => (it.qty ? (it.have || 0) >= it.qty : it.monthly ? it.doneYm === ymKey(todayJ().y, todayJ().m) : !!it.done);
+  function listStats(l) { const all = l.sections.flatMap((x) => x.items); return { n: all.length, d: all.filter(itemDone).length }; }
+  function viewLists(id) {
+    if (id) {
+      const l = S.lists.find((x) => x.id === id);
+      if (!l) return `${backBtn()}<div class="empty">این لیست پیدا نشد</div>`;
+      const st = listStats(l);
+      const secs = l.sections.map((sec) => {
+        const items = sec.items.map((it) => {
+          const d = itemDone(it);
+          const qty = it.qty ? `<span class="row" style="gap:4px"><button class="x" data-a="itemQty" data-l="${l.id}" data-s="${sec.id}" data-i="${it.id}" data-n="-1" aria-label="کم">−</button><span class="chip ${d ? 'sage' : ''}" style="min-width:58px;justify-content:center">${fa(it.have || 0)} از ${fa(it.qty)}</span><button class="x" data-a="itemQty" data-l="${l.id}" data-s="${sec.id}" data-i="${it.id}" data-n="1" aria-label="زیاد">+</button></span>` : it.monthly ? '<span class="chip peach" style="font-size:10.5px">هر ماه</span>' : '';
+          return `<div class="listrow ${d ? 'done' : ''}">${ring(d, l.color || 'var(--sage)', 'toggleItem', `data-l="${l.id}" data-s="${sec.id}" data-i="${it.id}"`)}<span class="t" data-a="editItem" data-l="${l.id}" data-s="${sec.id}" data-i="${it.id}">${esc(it.text)}${it.note ? `<div class="tiny muted">${esc(it.note)}</div>` : ''}</span>${qty}</div>`;
+        }).join('') || `<div class="tiny faint" style="padding:6px 0">${esc(sec.hint || 'موردی نیست')}</div>`;
+        return `<div style="margin-bottom:14px"><div class="row" style="margin-bottom:2px"><b class="grow" style="color:var(--rose-deep)">${esc(sec.title)}</b><span class="tiny muted">${fa(sec.items.filter(itemDone).length)}/${fa(sec.items.length)}</span></div>${items}
+          <div class="row" style="margin-top:6px"><input type="text" class="grow" id="ni-${sec.id}" placeholder="مورد جدید…"><input type="text" inputmode="numeric" id="nq-${sec.id}" placeholder="تعداد" style="width:70px"><button class="btn soft" data-a="addListItem" data-l="${l.id}" data-s="${sec.id}">${ic('plus')}</button></div></div>`;
+      }).join('');
+      return `<button class="back no-print" data-a="go" data-h="more/lists">${ic('chevR')} چک‌لیست‌ها</button>
+        ${card('', l.icon || 'listCheck', esc(l.title), `${l.desc ? `<div class="small muted" style="margin-bottom:10px">${esc(l.desc)}</div>` : ''}<div class="bar" style="--c:${l.color || 'var(--sage)'};grid-template-columns:1fr 44px;margin-bottom:10px"><div class="track"><div class="fill" style="width:${st.n ? Math.round((st.d / st.n) * 100) : 0}%"></div></div><span class="pc">${fa(st.n ? Math.round((st.d / st.n) * 100) : 0)}٪</span></div>${secs}
+          <div class="btn-row"><button class="btn soft" data-a="addSection" data-l="${l.id}">${ic('plus')} بخش جدید</button><button class="btn ghost" data-a="editList" data-l="${l.id}">${ic('edit')} ویرایش لیست</button></div>`)}`;
+    }
+    const tiles = S.lists.map((l) => { const st = listStats(l); return `<button class="tile" data-a="go" data-h="more/lists/${l.id}" style="--c:${l.color || '#94b58c'};--soft:${soft(l.color || '#94b58c', .2)}"><span class="ico">${ic(l.icon || 'listCheck')}</span><b>${esc(l.title)}</b><span>${fa(st.d)} از ${fa(st.n)} انجام شده</span></button>`; }).join('');
+    return `${backBtn()}<div class="tiles">${tiles}<button class="tile" data-a="go" data-h="more/books" style="--c:#d99a6c;--soft:#f9e6d6"><span class="ico">${ic('book')}</span><b>چک‌لیست کتاب‌ها</b><span>${fa(S.books.filter((b) => b.status === 'done').length)} از ${fa(S.books.length)} خوانده شده</span></button><button class="tile" data-a="editList" style="border-style:dashed"><span class="ico">${ic('plus')}</span><b>لیست جدید</b><span>هر چک‌لیستی که لازم داری</span></button></div>`;
   }
+  const findItem = (el) => { const l = S.lists.find((x) => x.id === el.dataset.l), sec = l.sections.find((x) => x.id === el.dataset.s); return { l, sec, it: sec ? sec.items.find((x) => x.id === el.dataset.i) : null }; };
+  function editItem(el) {
+    const { sec, it } = findItem(el);
+    const sh = sheet(`<h3>ویرایش مورد</h3><label class="lbl">عنوان</label><input id="it-x" type="text" value="${esc(it.text)}">
+      <div class="row"><div class="grow"><label class="lbl">تعداد هدف (اختیاری)</label><input id="it-q" type="text" inputmode="numeric" value="${it.qty ? fa(it.qty) : ''}"></div><div class="grow"><label class="lbl">موجود</label><input id="it-h" type="text" inputmode="numeric" value="${it.have ? fa(it.have) : ''}"></div></div>
+      <label class="lbl">توضیح (مثلاً دوز و ساعت دارو)</label><input id="it-n" type="text" value="${esc(it.note || '')}">
+      <label class="lbl">تکرار</label>${opts('mo', [['0', 'یک‌بار'], ['1', 'هر ماه از نو']], it.monthly ? '1' : '0')}${foot(true)}`, () => {
+      const x = $('#it-x', sh).value.trim(); if (!x) return toast('عنوان رو بنویس');
+      it.text = x; it.qty = num($('#it-q', sh).value) || undefined; it.have = num($('#it-h', sh).value) || 0; it.note = $('#it-n', sh).value.trim() || undefined; it.monthly = optVal(sh, 'mo') === '1' || undefined;
+      save(); closeSheet(); rerender();
+    });
+    sh._del = () => { sec.items = sec.items.filter((x) => x !== it); save(); closeSheet(); rerender(); };
+  }
+  function editList(lid) {
+    const l = lid ? S.lists.find((x) => x.id === lid) : null;
+    const sh = sheet(`<h3>${l ? 'ویرایش لیست' : 'لیست جدید'}</h3><label class="lbl">نام لیست</label><input id="ls-t" type="text" value="${esc(l ? l.title : '')}" placeholder="مثلاً: وسایل سفر">
+      <label class="lbl">توضیح</label><input id="ls-d" type="text" value="${esc(l && l.desc ? l.desc : '')}"><label class="lbl">رنگ</label>${colorOpts(l ? l.color : '#9fbf98')}${foot(!!l)}`, () => {
+      const t = $('#ls-t', sh).value.trim(); if (!t) return toast('نام لیست رو بنویس');
+      if (l) { l.title = t; l.desc = $('#ls-d', sh).value.trim(); l.color = optVal(sh, 'color') || l.color; save(); closeSheet(); rerender(); return; }
+      const nl = { id: 'l-' + uid(), title: t, desc: $('#ls-d', sh).value.trim(), color: optVal(sh, 'color') || '#9fbf98', icon: 'listCheck', sections: [{ id: uid(), title: 'موارد', items: [] }] };
+      S.lists.push(nl); save(); closeSheet(); go('more/lists/' + nl.id);
+    });
+    sh._del = () => { S.lists = S.lists.filter((x) => x !== l); save(); closeSheet(); go('more/lists'); };
+  }
+
   function viewSettings() {
     const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent), standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
     return `${backBtn()}
@@ -560,10 +676,11 @@
       ${card('', 'edit', 'شخصی‌سازی', `<label class="lbl" style="margin-top:0">نام</label><input type="text" data-in="profile" data-f="name" value="${esc(S.profile.name)}">
         <label class="lbl">عنوان</label><input type="text" data-in="profile" data-f="title" value="${esc(S.profile.title)}">
         <label class="lbl">شعار زیر عنوان</label><input type="text" data-in="profile" data-f="tagline" value="${esc(S.profile.tagline)}">
-        <label class="lbl">جمله‌ی انگیزشی ماه</label><input type="text" data-in="profile" data-f="motto" value="${esc(S.profile.motto)}">`)}
+        <label class="lbl">جمله‌ی انگیزشی ماه</label><input type="text" data-in="profile" data-f="motto" value="${esc(S.profile.motto)}">
+        <label class="lbl">خط قرمزها (با ویرگول جدا کن)</label><input type="text" data-in="redLines" value="${esc((S.profile.redLines || []).join('، '))}">`)}
       ${iOS && !standalone ? card('', 'info', 'نصب روی آیفون', installHtml()) : ''}
       ${card('', 'trash', 'شروع از نو', `<p class="small muted" style="margin-top:0">همه‌ی اطلاعات این گوشی پاک میشه. قبلش حتماً پشتیبان بگیر.</p><button class="btn danger" data-a="reset">پاک کردن همه‌چیز</button>`)}
-      <div class="center tiny faint" style="margin-top:14px">سوگل · نسخه ۱.۰ · آفلاین و خصوصی</div>`;
+      <div class="center tiny faint" style="margin-top:14px">سوگل · نسخه ۱.۱ · آفلاین و خصوصی</div>`;
   }
   const installHtml = () => `<div class="install">۱. این صفحه رو در <b>Safari</b> باز کن.<br>۲. دکمه‌ی اشتراک‌گذاری ${ic('share')} پایین صفحه رو بزن.<br>۳. گزینه‌ی <b>Add to Home Screen</b> (افزودن به صفحه اصلی) رو انتخاب کن.<br>۴. از این به بعد اپ رو از آیکون سوگل روی صفحه اصلی باز کن.<br><span class="tiny muted">مهم: اطلاعات نسخه‌ی نصب‌شده جدا از Safari نگه داشته میشه؛ فایل شخصی رو داخل اپ نصب‌شده وارد کن.</span></div>`;
 
@@ -629,7 +746,7 @@
     const habits = S.habits.map((h) => `<button class="habit-row ${habitDone(k, h.id) ? 'on' : ''}" data-a="toggleHabit" data-k="${k}" data-h="${h.id}" data-sheet="1"><span class="ring ${habitDone(k, h.id) ? 'on' : ''}" style="--c:${h.color}">${ic('check')}</span><span class="nm">${esc(h.name)}</span></button>`).join('');
     const exps = S.finance.expenses.filter((x) => x.date === k);
     sheet(`<h3>${fullDate(k)}</h3><div class="small muted">${fa(J.toDate(p.y, p.m, p.d).toLocaleDateString('fa-IR-u-ca-gregory', { day: 'numeric', month: 'long', year: 'numeric' }))}</div>
-      ${hol.map((h) => `<div class="chip red" style="margin:6px 0 0 4px">${esc(h.t)}</div>`).join('')}${evs.map((e) => `<div class="chip" style="margin:6px 0 0 4px">${esc(e.title)}</div>`).join('')}
+      ${hol.map((h) => `<div class="chip red" style="margin:6px 0 0 4px">${esc(h.t)}</div>`).join('')}${evs.length ? `<div style="margin-top:6px">${evs.slice().sort((a, b) => (a.time || '99').localeCompare(b.time || '99')).map((e) => `<div class="ev">${evIcon(e, true)}<div class="t">${esc(e.title)}${e.note ? `<div class="tiny muted">${esc(e.note)}</div>` : ''}</div>${telBtn(e)}${timeTxt(e)}</div>`).join('')}</div>` : ''}
       <label class="lbl">حال‌وهوا</label>${moodRow(k)}
       <label class="lbl">رویدادها و کارهای این روز</label><div id="day-items">${(dd.items || []).map((it) => `<div class="ev"><span style="font-size:17px">${it.emoji || '📌'}</span><div class="t">${esc(it.text)}</div><button class="x" data-a="delItem" data-k="${k}" data-id="${it.id}" data-sheet="1">${ic('x')}</button></div>`).join('') || '<div class="tiny faint">چیزی ثبت نشده</div>'}</div>
       <button class="btn soft" style="margin-top:6px" data-a="addItem" data-k="${k}">${ic('plus')} رویداد</button>
@@ -693,17 +810,30 @@
   }
   function addEvent(id) {
     const e = id ? S.events.find((x) => x.id === id) : null;
-    const base = e && e.m ? key(e.y || todayJ().y, e.m, e.d || 1) : ui.view === 'month' ? ui.sel : todayKey();
-    const sh = sheet(`<h3>${e ? 'ویرایش مناسبت' : 'مناسبت جدید'}</h3><label class="lbl">عنوان</label><input id="e-t" type="text" value="${esc(e ? e.title : '')}" placeholder="مثلاً: تولد مامان">
-      <label class="lbl">نوع</label>${opts('kind', [['cake', '🎂 تولد'], ['heart', '💗 سالگرد'], ['gift', '🎁 هدیه'], ['star', '⭐ سایر']], e ? e.kind : 'cake')}
-      <label class="lbl">تاریخ</label>${dateFields(base)}
-      <label class="lbl">تکرار</label>${opts('rep', [['y', 'هر سال'], ['o', 'فقط همین سال']], e && e.y ? 'o' : 'y')}${foot(!!e)}`, () => {
+    const base = e && e.m ? key(e.y || todayJ().y, e.m, e.d && e.d !== 'last' ? e.d : 1) : e && e.anchor ? e.anchor : ui.view === 'month' ? ui.sel : todayKey();
+    const rep0 = e ? (e.repeat || (e.y ? 'o' : 'y')) : 'y';
+    const emojis = ['', '🎂', '💗', '❤️', '🌹', '🎁', '⭐', '✈️', '🌙', '💬', '🗣️', '💞', '🎈', '📞', '🎨', '🪒', '📚', '🏃‍♀️'];
+    const sh = sheet(`<h3>${e ? 'ویرایش برنامه' : 'مناسبت / برنامه جدید'}</h3><label class="lbl">عنوان</label><input id="e-t" type="text" value="${esc(e ? e.title : '')}" placeholder="مثلاً: تولد مامان">
+      <label class="lbl">نشانه</label><div class="opts" data-opt="emo">${emojis.map((x) => `<button type="button" class="${(e ? e.emoji || '' : '🎂') === x ? 'on' : ''}" data-a="opt" data-v="${x}" style="font-size:18px;padding:2px 8px">${x || '—'}</button>`).join('')}</div>
+      <label class="lbl">تکرار</label>${opts('rep', [['y', 'هر سال'], ['o', 'یک‌بار'], ['monthly', 'هر ماه'], ['weekly', 'هر هفته'], ['alt', 'یک روز در میان']], rep0)}
+      <div data-show="y o monthly alt"><label class="lbl" data-lbl>تاریخ</label>${dateFields(base)}</div>
+      <div data-show="monthly"><label class="lbl">روز ماه</label>${opts('md', [['day', 'همین روز تاریخ بالا'], ['last', 'آخر هر ماه']], e && e.d === 'last' ? 'last' : 'day')}</div>
+      <div data-show="weekly"><label class="lbl">روزهای هفته</label><div class="opts" data-opt="wd" data-multi="1">${WD.map((w, i) => `<button type="button" class="${e && (e.wd || []).includes(i) ? 'on' : ''}" data-a="opt" data-v="${i}">${w}</button>`).join('')}</div></div>
+      <div data-show="y o"><label class="lbl">چند روز طول می‌کشه؟</label><input id="e-span" type="text" inputmode="numeric" value="${fa(e && e.span ? e.span : 1)}" style="width:90px"></div>
+      <div class="row"><div class="grow"><label class="lbl">ساعت (اختیاری)</label><input id="e-time" type="time" value="${e && e.time ? e.time : ''}"></div><div class="grow"><label class="lbl">شماره تماس (اختیاری)</label><input id="e-tel" type="tel" dir="ltr" value="${esc(e && e.tel ? e.tel : '')}"></div></div>
+      <label class="lbl">توضیح</label><input id="e-note" type="text" value="${esc(e && e.note ? e.note : '')}">${foot(!!e)}`, () => {
       const t = $('#e-t', sh).value.trim(); if (!t) return toast('عنوان رو بنویس');
-      const p = parse(readDate(sh));
-      const data = { title: t, kind: optVal(sh, 'kind'), m: p.m, d: p.d, y: optVal(sh, 'rep') === 'o' ? p.y : undefined };
-      if (e) Object.assign(e, data); else S.events.push({ id: uid(), ...data });
-      save(); closeSheet(); rerender(); toast('مناسبت ثبت شد');
+      const r = optVal(sh, 'rep'), dk = readDate(sh), p = parse(dk);
+      const data = { title: t, emoji: optVal(sh, 'emo') || undefined, kind: e ? e.kind : 'star', time: $('#e-time', sh).value || undefined, tel: toEn($('#e-tel', sh).value.trim()) || undefined, note: $('#e-note', sh).value.trim() || undefined, repeat: undefined, m: undefined, d: undefined, y: undefined, wd: undefined, anchor: undefined, span: undefined };
+      if (r === 'y' || r === 'o') { data.m = p.m; data.d = p.d; data.y = r === 'o' ? p.y : undefined; const sp = num($('#e-span', sh).value); data.span = sp > 1 ? sp : undefined; }
+      if (r === 'monthly') { data.repeat = 'monthly'; data.d = optVal(sh, 'md') === 'last' ? 'last' : p.d; }
+      if (r === 'weekly') { data.repeat = 'weekly'; data.wd = $$('[data-opt="wd"] .on', sh).map((b) => +b.dataset.v); if (!data.wd.length) return toast('حداقل یک روز هفته رو انتخاب کن'); }
+      if (r === 'alt') { data.repeat = 'alt'; data.anchor = dk; }
+      if (e) { Object.keys(data).forEach((k) => (data[k] === undefined ? delete e[k] : (e[k] = data[k]))); } else { Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]); S.events.push({ id: uid(), ...data }); }
+      save(); closeSheet(); rerender(); toast('ثبت شد');
     });
+    sh._sync = () => { const r = optVal(sh, 'rep'); $$('[data-show]', sh).forEach((el) => { el.hidden = !el.dataset.show.split(' ').includes(r); }); const l = $('[data-lbl]', sh); if (l) l.textContent = r === 'alt' ? 'شروع از تاریخ' : 'تاریخ'; };
+    sh._sync();
     sh._del = () => { S.events = S.events.filter((x) => x !== e); save(); closeSheet(); rerender(); };
   }
   function editBook(id) {
@@ -762,11 +892,20 @@
       if (o.plan) {
         S.plan.start = o.plan.start || S.plan.start;
         if (o.plan.quarters) S.plan.quarters = o.plan.quarters;
-        if (o.plan.periods) S.plan.periods = o.plan.periods.map((p) => ({ focus: p.focus || '', goals: (p.goals || []).map((g) => (Array.isArray(g) ? { text: g[0], cat: g[1], done: false } : { done: false, ...g })) }));
+        if (o.plan.periods) S.plan.periods = o.plan.periods.map((p, pi) => { const old = (S.plan.periods[pi] || { goals: [] }).goals; return { focus: p.focus || '', goals: (p.goals || []).map((g) => { const ng = Array.isArray(g) ? { text: g[0], cat: g[1], done: false } : { done: false, ...g }; const was = old.find((x) => x.text === ng.text); if (was) ng.done = was.done; return ng; }) }; });
       }
       if (o.annualGoals) S.annualGoals = o.annualGoals;
       (o.events || []).forEach((e) => { const ex = S.events.find((x) => x.id === e.id); if (ex) Object.assign(ex, e); else S.events.push({ id: e.id || uid(), ...e }); });
       S.started = true; save(); toast('برنامه‌ی شخصی وارد شد 🌸');
+    } else if (o.type === 'sogol-update') {
+      if (o.profile) Object.assign(S.profile, o.profile);
+      if (o.annualGoals) S.annualGoals = o.annualGoals;
+      if (o.mealPlan) S.mealPlan = o.mealPlan;
+      (o.events || []).forEach((e) => { const ex = S.events.find((x) => x.id === e.id); if (ex) { Object.keys(ex).forEach((k) => k !== 'id' && delete ex[k]); Object.assign(ex, e); } else S.events.push({ ...e, id: e.id || uid() }); });
+      (o.habits || []).forEach((h) => { const ex = S.habits.find((x) => x.id === h.id); if (ex) Object.assign(ex, h); else S.habits.push({ ...h }); });
+      S.lists = S.lists || [];
+      (o.lists || []).forEach((l) => { if (!S.lists.some((x) => x.id === l.id)) S.lists.push(JSON.parse(JSON.stringify(l))); });
+      S.started = true; save(); toast(`برنامه‌های جدید اضافه شد 🌸`);
     } else return toast('این فایل مربوط به سوگل نیست');
     closeSheet(); go('today');
   }
@@ -816,6 +955,12 @@
     delShop: (el) => { S.shopping = S.shopping.filter((x) => x.id !== el.dataset.id); save(); rerender(); },
     clearShop: () => { S.shopping = S.shopping.filter((x) => !x.done); save(); rerender(); },
     editIdea: (el) => editIdea(el.dataset.id),
+    toggleItem: (el) => { const { it } = findItem(el); if (it.qty) it.have = itemDone(it) ? 0 : it.qty; else if (it.monthly) it.doneYm = itemDone(it) ? undefined : ymKey(todayJ().y, todayJ().m); else it.done = !it.done; save(); rerender(); },
+    itemQty: (el) => { const { it } = findItem(el); it.have = Math.max(0, (it.have || 0) + +el.dataset.n); save(); rerender(); },
+    editItem: (el) => editItem(el),
+    addListItem: (el) => { const { sec } = findItem(el); const x = $('#ni-' + sec.id).value.trim(); if (!x) return; sec.items.push({ id: uid(), text: x, qty: num($('#nq-' + sec.id).value) || undefined, have: 0 }); save(); rerender(); },
+    addSection: (el) => { const l = S.lists.find((x) => x.id === el.dataset.l); const sh = sheet(`<h3>بخش جدید</h3><input id="sc-t" type="text" placeholder="مثلاً: آشپزخانه">${foot()}`, () => { const t = $('#sc-t', sh).value.trim(); if (!t) return; l.sections.push({ id: uid(), title: t, items: [] }); save(); closeSheet(); rerender(); }); },
+    editList: (el) => editList(el.dataset.l),
     ideaPhoto: (el) => { const sh = el.closest('.sheet'); sh && sh._photo && sh._photo(); },
     setPhoto: async (el) => { const d = await pickImage(); if (!d) return; const ym = el.dataset.ym, old = S.photos[ym]; if (old) IMG.del(old); const id = 'photo-' + ym + '-' + uid(); await IMG.put(id, d); S.photos[ym] = id; save(); rerender(); },
     delPhoto: (el) => { const ym = el.dataset.ym; IMG.del(S.photos[ym]); delete S.photos[ym]; save(); rerender(); },
@@ -833,7 +978,7 @@
         S = fresh(); IMG.cache = {}; closeSheet(); render();
       });
     },
-    opt: (el) => { $$('button', el.parentElement).forEach((b) => b.classList.toggle('on', b === el)); },
+    opt: (el) => { if (el.parentElement.dataset.multi) el.classList.toggle('on'); else $$('button', el.parentElement).forEach((b) => b.classList.toggle('on', b === el)); const sh = el.closest('.sheet'); if (sh && sh._sync) sh._sync(); },
     closeSheet: () => closeSheet(),
     sheetSave: () => sheetDone && sheetDone(),
     sheetDel: (el) => { const sh = el.closest('.sheet'); if (sh._del) sh._del(); }
@@ -852,7 +997,8 @@
     agTitle: (el) => { S.annualGoals[+el.dataset.i].title = el.value; },
     agSub: (el) => { S.annualGoals[+el.dataset.i].sub = el.value; },
     agIcon: (el) => { S.annualGoals[+el.dataset.i].icon = el.value; },
-    meal: (el) => { const w = (S.meals[el.dataset.w] = S.meals[el.dataset.w] || {}); const d = (w[el.dataset.d] = w[el.dataset.d] || {}); d[el.dataset.f] = el.value; },
+    meal: (el) => { S.mealPlan = S.mealPlan || {}; const d = (S.mealPlan[el.dataset.d] = S.mealPlan[el.dataset.d] || {}); d[el.dataset.f] = el.value; },
+    redLines: (el) => { S.profile.redLines = el.value.split(/[،,]/).map((x) => x.trim()).filter(Boolean); },
     profile: (el) => { S.profile[el.dataset.f] = el.value; }
   };
   document.addEventListener('input', (e) => { const el = e.target.closest('[data-in]'); if (el && IN[el.dataset.in]) { IN[el.dataset.in](el); save(); } });

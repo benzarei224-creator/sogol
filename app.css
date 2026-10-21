@@ -406,3 +406,14 @@ label.lbl { display: block; font-size: 12.5px; font-weight: 700; color: var(--in
   .card-b { padding: 8px 10px 10px; }
   textarea { border-style: dashed; min-height: 40px; }
 }
+
+/* ---------- v1.1: منوی سه‌وعده، چک‌لیست‌ها، برنامه‌های تکرارشونده ---------- */
+.mealday { padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.mealday:last-child { border-bottom: 0; }
+.mealday > b { display: block; font-size: 13.5px; margin-bottom: 4px; }
+.mealday.today > b { color: var(--rose-deep); }
+.ml { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 6px; margin: 3px 0; font-size: 12.5px; color: var(--ink-soft); }
+.ml input { padding: 6px 10px; font-size: 15px; }
+.day .marks .emo { font-size: 11.5px; line-height: 1; }
+.listrow .t { cursor: pointer; }
+.listrow .x { font-size: 18px; font-weight: 700; color: var(--rose-deep); background: var(--rose-pale); }
