@@ -417,3 +417,22 @@ label.lbl { display: block; font-size: 12.5px; font-weight: 700; color: var(--in
 .day .marks .emo { font-size: 11.5px; line-height: 1; }
 .listrow .t { cursor: pointer; }
 .listrow .x { font-size: 18px; font-weight: 700; color: var(--rose-deep); background: var(--rose-pale); }
+
+/* ---------- v1.2: ویرایش دستی همه بخش‌ها ---------- */
+.card-h .act + .act { margin-right: 4px; }
+.eb { white-space: nowrap; }
+.hero { position: relative; }
+.hero-eb { position: absolute; top: 8px; left: 8px; width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.85); border: 1px solid var(--line); font-size: 15px; z-index: 2; }
+.le { margin-top: 10px; }
+.le-row { display: flex; gap: 8px; align-items: flex-end; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: #fff; margin-bottom: 8px; }
+.le-f { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.le-c { flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.le-c > span { font-size: 11px; color: var(--ink-faint); font-weight: 700; }
+.le-c input, .le-c select, .le-c textarea { padding: 7px 10px; font-size: 15px; min-height: 0; }
+.le-c input[type=color] { padding: 2px; height: 38px; width: 100%; }
+.le-c .emo-in { text-align: center; font-size: 18px; padding: 4px; }
+.le-b { display: flex; flex-direction: column; gap: 4px; }
+.le-b button { width: 32px; height: 28px; border-radius: 8px; background: var(--rose-pale); color: var(--rose-deep); font-size: 12px; display: grid; place-items: center; }
+.le-b button.del { color: var(--danger); background: #fbe3e6; }
+.le-b button svg { width: 15px; height: 15px; }
+.quote .when button, .motto button, .ev .t[data-a] { cursor: pointer; }

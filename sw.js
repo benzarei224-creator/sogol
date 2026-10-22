@@ -1,5 +1,5 @@
 /* سرویس‌ورکر سوگل: کار آفلاین. با هر به‌روزرسانی، VERSION را عوض کنید. */
-const VERSION = 'sogol-v1.1.0';
+const VERSION = 'sogol-v1.2.0';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'app.css',
   'jalali.js', 'holidays.js', 'data.js', 'icons.js', 'app.js',

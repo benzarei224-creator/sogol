@@ -221,7 +221,7 @@
     const exps = S.finance.expenses.filter((x) => x.date.startsWith(ym));
     let loggedDays = new Set(exps.map((x) => x.date)).size;
     const cats = {};
-    D.progressCats.forEach((c) => {
+    PC().forEach((c) => {
       const parts = [];
       const hs = S.habits.filter((h) => h.cat === c.id);
       if (hs.length && elapsed) parts.push(hs.reduce((a, h) => a + habit[h.id].rate, 0) / hs.length);
@@ -244,7 +244,12 @@
   }
   const spent = (ym, cat) => S.finance.expenses.filter((x) => x.date.startsWith(ym) && (!cat || x.cat === cat)).reduce((a, x) => a + x.amount, 0);
   const catOf = (id) => S.finance.cats.find((c) => c.id === id) || { name: 'نامشخص', color: '#ccc' };
-  const quoteOf = (k) => D.quotes[dn(k) % D.quotes.length];
+  const QUOTES = () => S.quotes || D.quotes;
+  const PROMPTS = () => S.dayPrompts || D.dayPrompts;
+  const MOODS = () => S.moods || D.moods;
+  const RFIELDS = () => S.reviewFields || D.reviewFields;
+  const PC = () => S.progressCats || D.progressCats;
+  const quoteOf = (k) => { const q = QUOTES(); return q.length ? q[dn(k) % q.length] : ''; };
 
   /* ================= رابط کاربری ================= */
   const ui = { view: 'today', sub: null, y: todayJ().y, m: todayJ().m, sel: todayKey(), week: 0 };
@@ -260,6 +265,7 @@
     return `<section class="card ${cls}"><div class="card-h">${ic(icon, 'ic')}<h2>${title}</h2>${act}</div><div class="card-b">${body}</div></section>`;
   }
   const ring = (on, color, a, attrs = '') => `<button class="ring ${on ? 'on' : ''}" style="--c:${color || 'var(--rose)'}" data-a="${a}" ${attrs} aria-pressed="${on}">${ic('check')}</button>`;
+  const EB = (w, attrs = '') => `<button class="act no-print eb" data-a="edit" data-w="${w}" ${attrs} aria-label="ویرایش">✏️ ویرایش</button>`;
   const rangeText = () => { const r = periodRange(0); return `${slash(r.s)} تا ${slash(planEnd())}`; };
 
   function topbar(title, sub) {
@@ -274,12 +280,13 @@
       <div class="txt"><div class="name">${esc(S.profile.name)} ${ic('heartFill')}</div>
         <div class="ttl">${esc(S.profile.title)}</div><div class="rng">${rangeText()}</div><div class="tag">${esc(S.profile.tagline)}</div></div>
       <img class="cup blend" src="cupbooks.webp" alt="">
+      <button class="hero-eb no-print" data-a="edit" data-w="profile" aria-label="ویرایش متن‌ها">✏️</button>
     </section>`;
   }
   function annualCard() {
     const tones = [['#a9c19f', '#e3ecdd'], ['#d98b9b', '#fbe6e8'], ['#d98b9b', '#fbe6e8'], ['#94b58c', '#e3ecdd'], ['#d98b9b', '#fbe6e8'], ['#d99a6c', '#f9e6d6'], ['#d98b9b', '#fbe6e8'], ['#e1a25c', '#fbefd9'], ['#a99ab2', '#ece2ee']];
     const body = `<div class="agrid">${S.annualGoals.map((g, i) => `<div class="ag" style="--c:${tones[i % 9][0]};--soft:${tones[i % 9][1]}"><div class="ico">${ic(g.icon)}</div><b>${esc(g.title)}</b><span>${esc(g.sub)}</span></div>`).join('')}</div>`;
-    return `<section class="card a-annual"><div class="card-h">${ic('heart', 'ic')}<h2>اهداف ثابت سالانه</h2><button class="act no-print" data-a="go" data-h="more/annual">ویرایش</button></div>${body}</section>`;
+    return `<section class="card a-annual"><div class="card-h">${ic('heart', 'ic')}<h2>اهداف ثابت سالانه</h2>${EB('annual')}</div>${body}</section>`;
   }
   function eventsCard(y, m) {
     const len = J.monthLength(y, m), rows = [];
@@ -304,19 +311,19 @@
       return `<div class="ev" ${r.k ? `data-a="openDay" data-k="${r.k}"` : ''}>${icon}<div class="t">${esc(r.t)}${r.kind === 'hol' ? ' <span class="tiny faint">(تعطیل)</span>' : ''}${r.ev && r.ev.time ? ` <span class="tiny muted">ساعت ${fa(r.ev.time)}</span>` : ''}</div>${diff !== null && diff >= 0 && diff <= 60 && !r.rng ? `<span class="cd">${countdown(diff)}</span>` : ''}${chip}</div>`;
     }).join('') : '<div class="empty">مناسبتی برای این ماه ثبت نشده</div>';
     const recHtml = recs.length ? `<div class="tiny muted" style="margin-top:10px;font-weight:700">برنامه‌های تکرارشونده</div><div class="opts" style="margin-top:4px">${recs.map((e) => `<span class="chip" title="${repeatText(e)}">${e.emoji || ''} ${esc(e.title)} · ${e.repeat === 'alt' ? 'یک روز در میان' : (e.wd || []).map((w) => WDS[w]).join('،')}</span>`).join('')}</div>` : '';
-    return card('a-events', 'gift', 'مناسبت‌های ماه', body + recHtml, `<button class="act no-print" data-a="addEvent">+ افزودن</button>`) ;
+    return card('a-events', 'gift', 'مناسبت‌های ماه', body + recHtml, `<button class="act no-print" data-a="addEvent">+ افزودن</button><button class="act no-print eb" data-a="go" data-h="more/events">✏️ ویرایش</button>`);
   }
   function goalsCard(k) {
     const i = periodOf(k);
     if (i < 0) return card('a-goals', 'target', 'اهداف اصلی ماه', `<div class="empty">این تاریخ خارج از برنامه سالانه است.<br><button class="btn soft" style="margin-top:8px" data-a="go" data-h="more/plan">تنظیم برنامه سال</button></div>`);
     const p = S.plan.periods[i];
     const rows = p.goals.map((g, gi) => {
-      const c = D.progressCats.find((x) => x.id === g.cat);
+      const c = PC().find((x) => x.id === g.cat);
       return `<div class="goal ${g.done ? 'done' : ''}">${ring(g.done, c ? c.color : '', 'toggleGoal', `data-p="${i}" data-g="${gi}"`)}<span class="t">${esc(g.text)}</span></div>`;
     }).join('') || '<div class="empty">هدفی ثبت نشده</div>';
     const done = p.goals.filter((g) => g.done).length;
     return card('a-goals', 'target', `اهداف ماه ${ORD[i]} برنامه`, `<div class="small muted" style="margin-bottom:4px">${periodLabel(i)}${p.focus ? ` · <b>${esc(p.focus)}</b>` : ''} · ${fa(done)} از ${fa(p.goals.length)}</div>${rows}`,
-      `<button class="act no-print" data-a="go" data-h="more/plan/${i}">ویرایش</button>`).replace('</section>', `<img class="deco no-print" src="vase2.webp" style="left:8px;bottom:6px;width:44px;opacity:.55" alt=""></section>`);
+      EB('goals', `data-p="${i}"`)).replace('</section>', `<img class="deco no-print" src="vase2.webp" style="left:8px;bottom:6px;width:44px;opacity:.55" alt=""></section>`);
   }
   function weekStart(k) { return fromDn(dn(k) - wdOf(k)); }
   function checklistCard(k, cls = 'a-check') {
@@ -325,13 +332,13 @@
     const head = `<tr><th></th>${days.map((d, i) => `<th class="${d === tk ? 'today' : ''}">${WDS[i]}<div class="tiny faint">${fa(parse(d).d)}</div></th>`).join('')}</tr>`;
     const rows = S.habits.map((h) => `<tr><td class="hn"><i style="--c:${h.color}"></i>${esc(h.name)}</td>${days.map((d) => `<td>${ring(habitDone(d, h.id), h.color, 'toggleHabit', `data-k="${d}" data-h="${h.id}"`)}</td>`).join('')}</tr>`).join('');
     const nav = `<span class="row no-print" style="gap:4px"><button class="icon-btn" style="width:30px;height:30px" data-a="week" data-n="-7" aria-label="هفته قبل">${ic('chevR')}</button><button class="icon-btn" style="width:30px;height:30px" data-a="week" data-n="7" aria-label="هفته بعد">${ic('chevL')}</button></span>`;
-    return card(cls, 'calCheck', 'چک‌لیست‌های روزانه', `<table class="hgrid">${head}${rows}</table>`, nav);
+    return card(cls, 'calCheck', 'چک‌لیست‌های روزانه', `<table class="hgrid">${head}${rows}</table>`, nav + EB('habits'));
   }
   function progressCard(y, m) {
     const st = monthStats(y, m);
-    const body = D.progressCats.map((c) => `<div class="bar" style="--c:${c.color}"><span>${c.name}</span><div class="track"><div class="fill" style="width:${st.cats[c.id]}%"></div></div><span class="pc">${fa(st.cats[c.id])}٪</span></div>`).join('')
+    const body = PC().map((c) => `<div class="bar" style="--c:${c.color}"><span>${c.name}</span><div class="track"><div class="fill" style="width:${st.cats[c.id]}%"></div></div><span class="pc">${fa(st.cats[c.id])}٪</span></div>`).join('')
       + `<div class="tiny faint" style="margin-top:6px">${ic('info', '').replace('<svg', '<svg style="width:12px;height:12px;vertical-align:-2px"')} خودکار از روی چک‌لیست‌ها، اهداف ماه و ثبت هزینه‌ها</div>`;
-    return card('a-prog', 'bars', 'پیشرفت ماهانه', body);
+    return card('a-prog', 'bars', 'پیشرفت ماهانه', body, EB('progress'));
   }
   function donut(parts, size = 150) {
     const total = parts.reduce((a, p) => a + p.v, 0), r = 15.9155, c = 100;
@@ -347,22 +354,22 @@
     const body = `<div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap"><span class="chip">دسته‌بندی هزینه‌ها</span><span class="chip sage">پس‌انداز ماه: ${sv.actual ? money(sv.actual) : '—'}</span></div>
       <div class="fin"><ul class="leg">${parts.map((p) => `<li style="--c:${p.color}"><i></i><span>${esc(p.name)}</span><span class="money">${p.v ? sep(p.v) : '—'}</span></li>`).join('')}</ul>
       <div class="donut">${donut(parts)}<div class="mid"><div>جمع کل<b class="money">${tot ? sep(tot) : '—'}</b>${tot ? 'تومان' : ''}</div></div></div></div>`;
-    return card(cls, 'wallet', 'مدیریت مالی', body, `<button class="act no-print" data-a="addExpense">+ هزینه</button>`);
+    return card(cls, 'wallet', 'مدیریت مالی', body, `<button class="act no-print" data-a="addExpense">+ هزینه</button>${EB('expCats')}`);
   }
   function moodRow(k) {
     const cur = dayData(k).mood;
-    return `<div class="moods">${D.moods.map((e, i) => `<button class="${cur === e ? 'on' : ''}" data-a="mood" data-k="${k}" data-v="${e}" aria-label="${D.moodNames[i]}">${e}</button>`).join('')}</div>`;
+    return `<div class="moods">${MOODS().map((e, i) => `<button class="${cur === e ? 'on' : ''}" data-a="mood" data-k="${k}" data-v="${esc(e)}" aria-label="${esc(D.moodNames[i] || e)}">${esc(e)}</button>`).join('')}</div>`;
   }
   function noteCard(k) {
     const body = `<div class="small muted" style="margin-bottom:6px">${fullDate(k)}</div>${moodRow(k)}
-      <div class="prompts" style="margin-top:10px">${D.dayPrompts.join('<br>')}</div>
+      <div class="prompts" style="margin-top:10px">${PROMPTS().map(esc).join('<br>')}</div>
       <textarea class="lined" style="margin-top:10px" rows="4" data-in="note" data-k="${k}" placeholder="بنویس…">${esc(dayData(k).note || '')}</textarea>`;
-    return card('a-note', 'notebook', 'یادداشت و حال‌وهوای روزانه', body).replace('</section>', `<img class="deco no-print" src="vase3.webp" style="left:6px;top:46px;width:34px;opacity:.5" alt=""></section>`);
+    return card('a-note', 'notebook', 'یادداشت و حال‌وهوای روزانه', body, EB('notecfg')).replace('</section>', `<img class="deco no-print" src="vase3.webp" style="left:6px;top:46px;width:34px;opacity:.5" alt=""></section>`);
   }
   function reviewCard(y, m) {
     const ym = ymKey(y, m), r = S.reviews[ym] || {};
-    const body = D.reviewFields.map((f) => `<div class="review-item">${ic(f.icon)}<div><label class="lbl" style="margin-top:0">${f.label}</label><textarea rows="2" data-in="review" data-ym="${ym}" data-f="${f.k}">${esc(r[f.k] || '')}</textarea></div></div>`).join('');
-    return card('a-review', 'star', `ارزیابی و جمع‌بندی ${MONTHS[m - 1]}`, body);
+    const body = RFIELDS().map((f) => `<div class="review-item">${ic(f.icon)}<div><label class="lbl" style="margin-top:0">${f.label}</label><textarea rows="2" data-in="review" data-ym="${ym}" data-f="${f.k}">${esc(r[f.k] || '')}</textarea></div></div>`).join('');
+    return card('a-review', 'star', `ارزیابی و جمع‌بندی ${MONTHS[m - 1]}`, body, EB('review'));
   }
   function photoCard(y, m) {
     const ym = ymKey(y, m), id = S.photos[ym], u = id ? IMG.url(id) : null;
@@ -376,7 +383,7 @@
       const btns = [0, 1, 2].map((j) => { const i = qi * 3 + j; return `<button class="${i === cur ? 'cur' : i < cur ? 'past' : ''}" data-a="jumpPeriod" data-i="${i}" title="${esc(S.plan.periods[i].focus)}">${fa(i + 1)}</button>`; }).join('');
       return `<div class="q ${Math.floor(cur / 3) === qi && cur >= 0 ? 'cur' : ''}"><div><h4>سه‌ماهه ${ORD[qi]}</h4><div class="rng">${shortDate(s)} ${fa(parse(s).y)} تا ${shortDate(e)} ${fa(parse(e).y)}</div><div class="tt">${esc(q.title)}</div><div class="ms">${btns}</div><div class="sub">${esc(q.sub)}</div></div><img src="${imgs[qi]}.webp" alt=""></div>`;
     }).join('');
-    return card('a-year', 'leaf', `نمای کلی ۱۲ ماه پروژه ${esc(S.profile.name)}`, `<div class="quarters">${qs}</div>`, `<button class="act no-print" data-a="go" data-h="more/plan">برنامه کامل</button>`);
+    return card('a-year', 'leaf', `نمای کلی ۱۲ ماه پروژه ${esc(S.profile.name)}`, `<div class="quarters">${qs}</div>`, `${EB('quarters')}<button class="act no-print" data-a="go" data-h="more/plan">برنامه کامل</button>`);
   }
 
   /* ---------- تقویم ماه ---------- */
@@ -389,7 +396,7 @@
         <div class="mname">${MONTHS[m - 1]} ${fa(y)}<small>${per}</small></div>
         <button class="icon-btn no-print" data-a="month" data-n="1" aria-label="ماه بعد">${ic('chevL')}</button></div>
         ${focus ? `<div class="focus" style="margin-top:6px">${esc(focus)}</div>` : ''}</div>
-      <div class="motto">${ic('heartFill')}<span>${esc(S.profile.motto)}</span></div>
+      <div class="motto">${ic('heartFill')}<span class="grow">${esc(S.profile.motto)}</span><button class="no-print" data-a="edit" data-w="profile" aria-label="ویرایش جمله" style="font-size:15px">✏️</button></div>
     </div></section>`;
   }
   function calendarCard() {
@@ -416,10 +423,10 @@
   function dayCard() {
     const k = ui.sel, p = parse(k), hol = holidaysOn(p.y, p.m, p.d), evs = eventsOn(p.y, p.m, p.d), dd = dayData(k);
     const list = [...hol.map((h) => `<div class="ev">${ic('flag')}<div class="t">${esc(h.t)}${h.off ? ' <span class="tiny faint">(تعطیل)</span>' : ''}</div></div>`),
-      ...evs.slice().sort((a, b) => (a.time || '99').localeCompare(b.time || '99')).map((e) => `<div class="ev">${evIcon(e, true)}<div class="t">${esc(e.title)}${e.note ? `<div class="tiny muted">${esc(e.note)}</div>` : ''}</div>${telBtn(e)}${timeTxt(e)}</div>`),
-      ...(dd.items || []).map((it) => `<div class="ev"><span style="font-size:17px">${it.emoji || '📌'}</span><div class="t">${esc(it.text)}</div><button class="x" data-a="delItem" data-k="${k}" data-id="${it.id}" aria-label="حذف">${ic('x')}</button></div>`)].join('');
+      ...evs.slice().sort((a, b) => (a.time || '99').localeCompare(b.time || '99')).map((e) => `<div class="ev" data-a="addEvent" data-id="${e.id}">${evIcon(e, true)}<div class="t">${esc(e.title)}${e.note ? `<div class="tiny muted">${esc(e.note)}</div>` : ''}</div>${telBtn(e)}${timeTxt(e)}</div>`),
+      ...(dd.items || []).map((it) => `<div class="ev"><span style="font-size:17px">${it.emoji || '📌'}</span><div class="t" data-a="edit" data-w="dayItems" data-k="${k}">${esc(it.text)}</div><button class="x" data-a="delItem" data-k="${k}" data-id="${it.id}" aria-label="حذف">${ic('x')}</button></div>`)].join('');
     const i = periodOf(k);
-    return card('a-day no-print', 'calendar', fullDate(k), `${i >= 0 ? `<div class="small muted">ماه ${ORD[i]} برنامه · ${esc(S.plan.periods[i].focus || '')}</div>` : ''}${list || '<div class="empty" style="padding:8px">رویدادی برای این روز نیست</div>'}
+    return card('a-day no-print', 'calendar', fullDate(k) + '<div class="tiny muted" style="font-weight:500">برای ویرایش، روی هر مورد بزن</div>', `${i >= 0 ? `<div class="small muted">ماه ${ORD[i]} برنامه · ${esc(S.plan.periods[i].focus || '')}</div>` : ''}${list || '<div class="empty" style="padding:8px">رویدادی برای این روز نیست</div>'}
       <div class="btn-row" style="margin-top:10px"><button class="btn soft" data-a="openDay" data-k="${k}">${ic('edit')} جزئیات روز</button><button class="btn soft" data-a="addItem" data-k="${k}">${ic('plus')} رویداد</button></div>`);
   }
   function viewMonth() {
@@ -457,7 +464,7 @@
   function redLinesCard() {
     const rl = S.profile.redLines || [];
     if (!rl.length) return '';
-    return `<section class="card" style="margin-top:12px;border-color:#efc3c9"><div class="card-b" style="padding:12px 16px"><div class="row" style="align-items:flex-start"><span style="font-size:20px">🚫</span><div class="grow"><b style="color:var(--danger)">خط قرمزهای ما</b><div class="opts" style="margin-top:6px">${rl.map((x) => `<span class="chip red" style="font-size:13px">${esc(x)}</span>`).join('')}</div></div></div></div></section>`;
+    return `<section class="card" style="margin-top:12px;border-color:#efc3c9"><div class="card-b" style="padding:12px 16px"><div class="row" style="align-items:flex-start"><span style="font-size:20px">🚫</span><div class="grow"><b style="color:var(--danger)">خط قرمزهای ما</b> <button class="no-print" data-a="edit" data-w="redLines" aria-label="ویرایش" style="font-size:14px">✏️</button><div class="opts" style="margin-top:6px">${rl.map((x) => `<span class="chip red" style="font-size:13px">${esc(x)}</span>`).join('')}</div></div></div></div></section>`;
   }
   function routineCard(k) {
     const p = parse(k), rows = [];
@@ -466,9 +473,8 @@
     rows.sort((a, b) => (a.t || '12:00').localeCompare(b.t || '12:00'));
     const meal = (S.mealPlan || {})[wdOf(k)] || {};
     const meals = meal.b || meal.l || meal.s ? `<div class="prompts" style="margin-top:10px;line-height:1.9">🍳 <b>صبحانه:</b> ${esc(meal.b || '—')}<br>🍲 <b>ناهار:</b> ${esc(meal.l || '—')}<br>🥗 <b>شام:</b> ${esc(meal.s || '—')}</div>` : '';
-    if (!rows.length && !meals) return '';
-    const body = rows.map((r) => `<div class="ev"><span style="font-size:17px">${r.e}</span><div class="t">${esc(r.x)}</div>${r.ev ? telBtn(r.ev) : ''}${r.t ? `<span class="chip sage" style="font-size:11px">${fa(r.t)}</span>` : ''}</div>`).join('') + meals;
-    return card('', 'clock', 'برنامه امروز', body, `<button class="act" data-a="go" data-h="more/meals">منو</button>`);
+    const body = (rows.length || meals ? '' : '<div class="empty" style="padding:6px">برنامه‌ی ثابتی نداری؛ با ✏️ اضافه کن</div>') + rows.map((r) => `<div class="ev" ${r.ev ? `data-a="addEvent" data-id="${r.ev.id}"` : 'data-a="edit" data-w="routine"'}><span style="font-size:17px">${esc(r.e)}</span><div class="t">${esc(r.x)}</div>${r.ev ? telBtn(r.ev) : ''}${r.t ? `<span class="chip sage" style="font-size:11px">${fa(r.t)}</span>` : ''}</div>`).join('') + meals;
+    return card('', 'clock', 'برنامه امروز', body, `${EB('routine')}<button class="act" data-a="go" data-h="more/meals">منو</button>`);
   }
   function viewToday() {
     const tk = todayKey(), dd = dayData(tk), i = periodOf(tk);
@@ -476,18 +482,18 @@
     const remHtml = rem.length ? rem.map((r) => `<div class="reminder" ${r.k ? `data-a="openDay" data-k="${r.k}"` : r.h ? `data-a="go" data-h="${r.h}"` : ''} style="--c:${r.c};--soft:${r.soft}"><span class="bub">${r.emo ? `<span style="font-size:17px">${r.emo}</span>` : ic(r.icon)}</span><div class="grow"><div>${r.t}</div><div class="tiny muted">${r.s}</div></div>${r.tel ? telBtn(r.tel) : ''}</div>`).join('') : '<div class="empty">امروز یادآوری خاصی نداری 🌸</div>';
     const habits = S.habits.map((h) => { const on = habitDone(tk, h.id), st = streak(h); return `<button class="habit-row ${on ? 'on' : ''}" data-a="toggleHabit" data-k="${tk}" data-h="${h.id}"><span class="ring ${on ? 'on' : ''}" style="--c:${h.color}">${ic('check')}</span><span class="nm">${esc(h.name)}</span>${st > 1 ? `<span class="streak">🔥 ${fa(st)} روز</span>` : ''}</button>`; }).join('');
     const done = S.habits.filter((h) => habitDone(tk, h.id)).length;
-    const items = (dd.items || []).map((it) => `<div class="ev"><span style="font-size:17px">${it.emoji || '📌'}</span><div class="t">${esc(it.text)}</div><button class="x" data-a="delItem" data-k="${tk}" data-id="${it.id}" aria-label="حذف">${ic('x')}</button></div>`).join('');
+    const items = (dd.items || []).map((it) => `<div class="ev"><span style="font-size:17px">${it.emoji || '📌'}</span><div class="t" data-a="edit" data-w="dayItems" data-k="${tk}">${esc(it.text)}</div><button class="x" data-a="delItem" data-k="${tk}" data-id="${it.id}" aria-label="حذف">${ic('x')}</button></div>`).join('');
     const todaySpent = S.finance.expenses.filter((x) => x.date === tk).reduce((a, x) => a + x.amount, 0);
     return `${topbar(`سلام ${esc(S.profile.name)} ${ic('heartFill').replace('<svg', '<svg style="width:20px;height:20px;color:var(--rose)"')}`, fullDate(tk))}
-      <section class="card quote"><div><div class="when">جمله‌ی امروز</div><p>${esc(quoteOf(tk))}</p></div><img class="blend" src="sprig2.webp" alt=""></section>
+      ${QUOTES().length ? `<section class="card quote"><div><div class="when row">جمله‌ی امروز <button class="no-print" data-a="edit" data-w="quotes" aria-label="ویرایش جمله‌ها">✏️</button></div><p>${esc(quoteOf(tk))}</p></div><img class="blend" src="sprig2.webp" alt=""></section>` : ''}
       ${redLinesCard()}
       ${routineCard(tk)}
       ${card('', 'bell', 'یادآوری‌ها', remHtml)}
-      ${card('', 'heart', 'حالت امروز چطوره؟', moodRow(tk))}
-      ${card('', 'listCheck', `چک‌لیست امروز <span class="tiny muted">(${fa(done)} از ${fa(S.habits.length)})</span>`, habits, `<button class="act" data-a="go" data-h="habits">همه</button>`)}
+      ${card('', 'heart', 'حالت امروز چطوره؟', moodRow(tk), EB('moods'))}
+      ${card('', 'listCheck', `چک‌لیست امروز <span class="tiny muted">(${fa(done)} از ${fa(S.habits.length)})</span>`, habits, `${EB('habits')}<button class="act" data-a="go" data-h="habits">همه</button>`)}
       ${i >= 0 ? goalsCard(tk) : ''}
-      ${card('', 'calendar', 'امروز در تقویم', (items || '<div class="empty" style="padding:6px">هنوز چیزی ثبت نکردی</div>') + `<div class="btn-row" style="margin-top:10px"><button class="btn soft" data-a="addItem" data-k="${tk}">${ic('plus')} رویداد</button><button class="btn soft" data-a="addExpense">${ic('wallet')} هزینه${todaySpent ? ` (${sep(todaySpent)})` : ''}</button></div>`)}
-      ${card('', 'notebook', 'یادداشت امروز', `<div class="prompts">${D.dayPrompts.join('<br>')}</div><textarea class="lined" style="margin-top:10px" rows="5" data-in="note" data-k="${tk}" placeholder="بنویس…">${esc(dd.note || '')}</textarea>`)}`;
+      ${card('', 'calendar', 'امروز در تقویم', (items || '<div class="empty" style="padding:6px">هنوز چیزی ثبت نکردی</div>') + `<div class="btn-row" style="margin-top:10px"><button class="btn soft" data-a="addItem" data-k="${tk}">${ic('plus')} رویداد</button><button class="btn soft" data-a="addExpense">${ic('wallet')} هزینه${todaySpent ? ` (${sep(todaySpent)})` : ''}</button></div>`, items ? EB('dayItems', `data-k="${tk}"`) : '')}
+      ${card('', 'notebook', 'یادداشت امروز', `<div class="prompts">${PROMPTS().map(esc).join('<br>')}</div><textarea class="lined" style="margin-top:10px" rows="5" data-in="note" data-k="${tk}" placeholder="بنویس…">${esc(dd.note || '')}</textarea>`, EB('prompts'))}`;
   }
 
   /* ---------- عادت‌ها ---------- */
@@ -501,7 +507,7 @@
     return `${topbar('عادت‌ها و چک‌لیست', `${MONTHS[m - 1]} ${fa(y)}`)}
       ${checklistCard(fromDn(dn(todayKey()) + ui.week), '')}
       <div class="row no-print" style="margin:14px 2px 8px"><button class="icon-btn" data-a="month" data-n="-1">${ic('chevR')}</button><b class="grow center">نقشه‌ی ${MONTHS[m - 1]} ${fa(y)}</b><button class="icon-btn" data-a="month" data-n="1">${ic('chevL')}</button></div>
-      ${card('', 'flame', 'زنجیره‌ی عادت‌ها', cards || '<div class="empty">عادتی تعریف نشده</div>', `<button class="act" data-a="editHabit">+ عادت</button>`)}
+      ${card('', 'flame', 'زنجیره‌ی عادت‌ها', cards || '<div class="empty">عادتی تعریف نشده</div>', `<button class="act" data-a="editHabit">+ عادت</button>${EB('habits')}`)}
       ${progressCard(y, m)}`;
   }
 
@@ -531,7 +537,7 @@
       ${financeCard(y, m, '')}
       ${card('', 'piggy', 'پس‌انداز ماه', `<div class="row"><div class="grow"><label class="lbl" style="margin-top:0">هدف (تومان)</label><input type="text" inputmode="numeric" data-in="saving" data-ym="${ym}" data-f="target" value="${sv.target ? sep(sv.target) : ''}" placeholder="مثلاً ۲,۰۰۰,۰۰۰"></div><div class="grow"><label class="lbl" style="margin-top:0">پس‌انداز شده</label><input type="text" inputmode="numeric" data-in="saving" data-ym="${ym}" data-f="actual" value="${sv.actual ? sep(sv.actual) : ''}"></div></div>
         ${sv.target ? `<div class="bar" style="--c:var(--sage);grid-template-columns:1fr 44px;margin-top:8px"><div class="track"><div class="fill" style="width:${Math.min(100, Math.round(((sv.actual || 0) / sv.target) * 100))}%"></div></div><span class="pc">${fa(Math.round(((sv.actual || 0) / sv.target) * 100))}٪</span></div>` : ''}`)}
-      ${card('', 'target', 'سقف بودجه هر دسته', budgets + '<div class="tiny faint" style="margin-top:6px">برای تعیین سقف، روی هر دسته بزن.</div>', `<button class="act" data-a="editCat">+ دسته</button>`)}
+      ${card('', 'target', 'سقف بودجه هر دسته', budgets + '<div class="tiny faint" style="margin-top:6px">برای تعیین سقف، روی هر دسته بزن.</div>', EB('expCats'))}
       ${card('', 'listCheck', 'هزینه‌های ماه', list || '<div class="empty">هنوز هزینه‌ای ثبت نشده</div>', `<button class="act" data-a="addExpense">+ هزینه</button>`)}`;
   }
 
@@ -565,7 +571,7 @@
   }
   function viewPlan() {
     const cur = periodOf(todayKey()), open = location.hash.split('/')[3];
-    const cats = D.progressCats;
+    const cats = PC();
     const per = S.plan.periods.map((p, i) => {
       const isOpen = open !== undefined ? +open === i : i === cur;
       const goals = p.goals.map((g, gi) => `<div class="goal ${g.done ? 'done' : ''}">${ring(g.done, (cats.find((c) => c.id === g.cat) || {}).color, 'toggleGoal', `data-p="${i}" data-g="${gi}"`)}<span class="t">${esc(g.text)}</span><span class="chip" style="font-size:10.5px">${(cats.find((c) => c.id === g.cat) || { name: '—' }).name}</span><button class="x" data-a="delGoal" data-p="${i}" data-g="${gi}" aria-label="حذف">${ic('trash')}</button></div>`).join('');
@@ -615,7 +621,7 @@
       ${[['b', '🍳 صبحانه'], ['l', '🍲 ناهار'], ['s', '🥗 شام']].map(([f, l]) => `<label class="ml"><span>${l}</span><input type="text" data-in="meal" data-d="${i}" data-f="${f}" value="${esc(v[f] || '')}"></label>`).join('')}</div>`; }).join('');
     const shop = S.shopping.map((s) => `<div class="listrow ${s.done ? 'done' : ''}">${ring(s.done, 'var(--sage)', 'toggleShop', `data-id="${s.id}"`)}<span class="t">${esc(s.text)}</span><button class="x" data-a="delShop" data-id="${s.id}">${ic('x')}</button></div>`).join('');
     return `${backBtn()}${card('', 'utensils', 'منوی ثابت هفتگی', `<div class="tiny muted" style="margin-bottom:6px">این منو هر هفته تکرار میشه و هر روز توی صفحه‌ی «امروز» نشون داده میشه.</div>${rows}`)}
-      ${card('', 'cart', 'لیست خرید', `${shop || '<div class="empty" style="padding:6px">لیست خالیه</div>'}<div class="row" style="margin-top:8px"><input id="shop-new" type="text" class="grow" placeholder="مثلاً: سبزی تازه"><button class="btn" data-a="addShop">${ic('plus')}</button></div>${S.shopping.some((s) => s.done) ? '<button class="btn ghost" data-a="clearShop" style="margin-top:6px">پاک کردن خریدهای انجام‌شده</button>' : ''}`)}`;
+      ${card('', 'cart', 'لیست خرید', `${shop || '<div class="empty" style="padding:6px">لیست خالیه</div>'}<div class="row" style="margin-top:8px"><input id="shop-new" type="text" class="grow" placeholder="مثلاً: سبزی تازه"><button class="btn" data-a="addShop">${ic('plus')}</button></div>${S.shopping.some((s) => s.done) ? '<button class="btn ghost" data-a="clearShop" style="margin-top:6px">پاک کردن خریدهای انجام‌شده</button>' : ''}`, S.shopping.length ? EB('shopping') : '')}`;
   }
 
   /* ---------- چک‌لیست‌ها ---------- */
@@ -632,12 +638,12 @@
           const qty = it.qty ? `<span class="row" style="gap:4px"><button class="x" data-a="itemQty" data-l="${l.id}" data-s="${sec.id}" data-i="${it.id}" data-n="-1" aria-label="کم">−</button><span class="chip ${d ? 'sage' : ''}" style="min-width:58px;justify-content:center">${fa(it.have || 0)} از ${fa(it.qty)}</span><button class="x" data-a="itemQty" data-l="${l.id}" data-s="${sec.id}" data-i="${it.id}" data-n="1" aria-label="زیاد">+</button></span>` : it.monthly ? '<span class="chip peach" style="font-size:10.5px">هر ماه</span>' : '';
           return `<div class="listrow ${d ? 'done' : ''}">${ring(d, l.color || 'var(--sage)', 'toggleItem', `data-l="${l.id}" data-s="${sec.id}" data-i="${it.id}"`)}<span class="t" data-a="editItem" data-l="${l.id}" data-s="${sec.id}" data-i="${it.id}">${esc(it.text)}${it.note ? `<div class="tiny muted">${esc(it.note)}</div>` : ''}</span>${qty}</div>`;
         }).join('') || `<div class="tiny faint" style="padding:6px 0">${esc(sec.hint || 'موردی نیست')}</div>`;
-        return `<div style="margin-bottom:14px"><div class="row" style="margin-bottom:2px"><b class="grow" style="color:var(--rose-deep)">${esc(sec.title)}</b><span class="tiny muted">${fa(sec.items.filter(itemDone).length)}/${fa(sec.items.length)}</span></div>${items}
+        return `<div style="margin-bottom:14px"><div class="row" style="margin-bottom:2px"><b class="grow" style="color:var(--rose-deep)">${esc(sec.title)}</b><span class="tiny muted">${fa(sec.items.filter(itemDone).length)}/${fa(sec.items.length)}</span><button class="no-print" data-a="edit" data-w="secItems" data-l="${l.id}" data-s="${sec.id}" aria-label="ویرایش بخش" style="font-size:14px">✏️</button></div>${items}
           <div class="row" style="margin-top:6px"><input type="text" class="grow" id="ni-${sec.id}" placeholder="مورد جدید…"><input type="text" inputmode="numeric" id="nq-${sec.id}" placeholder="تعداد" style="width:70px"><button class="btn soft" data-a="addListItem" data-l="${l.id}" data-s="${sec.id}">${ic('plus')}</button></div></div>`;
       }).join('');
       return `<button class="back no-print" data-a="go" data-h="more/lists">${ic('chevR')} چک‌لیست‌ها</button>
         ${card('', l.icon || 'listCheck', esc(l.title), `${l.desc ? `<div class="small muted" style="margin-bottom:10px">${esc(l.desc)}</div>` : ''}<div class="bar" style="--c:${l.color || 'var(--sage)'};grid-template-columns:1fr 44px;margin-bottom:10px"><div class="track"><div class="fill" style="width:${st.n ? Math.round((st.d / st.n) * 100) : 0}%"></div></div><span class="pc">${fa(st.n ? Math.round((st.d / st.n) * 100) : 0)}٪</span></div>${secs}
-          <div class="btn-row"><button class="btn soft" data-a="addSection" data-l="${l.id}">${ic('plus')} بخش جدید</button><button class="btn ghost" data-a="editList" data-l="${l.id}">${ic('edit')} ویرایش لیست</button></div>`)}`;
+          <div class="btn-row"><button class="btn soft" data-a="addSection" data-l="${l.id}">${ic('plus')} بخش جدید</button><button class="btn soft" data-a="edit" data-w="sections" data-l="${l.id}">✏️ بخش‌ها و ترتیب</button><button class="btn ghost" data-a="editList" data-l="${l.id}">${ic('edit')} نام و رنگ لیست</button></div>`)}`;
     }
     const tiles = S.lists.map((l) => { const st = listStats(l); return `<button class="tile" data-a="go" data-h="more/lists/${l.id}" style="--c:${l.color || '#94b58c'};--soft:${soft(l.color || '#94b58c', .2)}"><span class="ico">${ic(l.icon || 'listCheck')}</span><b>${esc(l.title)}</b><span>${fa(st.d)} از ${fa(st.n)} انجام شده</span></button>`; }).join('');
     return `${backBtn()}<div class="tiles">${tiles}<button class="tile" data-a="go" data-h="more/books" style="--c:#d99a6c;--soft:#f9e6d6"><span class="ico">${ic('book')}</span><b>چک‌لیست کتاب‌ها</b><span>${fa(S.books.filter((b) => b.status === 'done').length)} از ${fa(S.books.length)} خوانده شده</span></button><button class="tile" data-a="editList" style="border-style:dashed"><span class="ico">${ic('plus')}</span><b>لیست جدید</b><span>هر چک‌لیستی که لازم داری</span></button></div>`;
@@ -680,7 +686,7 @@
         <label class="lbl">خط قرمزها (با ویرگول جدا کن)</label><input type="text" data-in="redLines" value="${esc((S.profile.redLines || []).join('، '))}">`)}
       ${iOS && !standalone ? card('', 'info', 'نصب روی آیفون', installHtml()) : ''}
       ${card('', 'trash', 'شروع از نو', `<p class="small muted" style="margin-top:0">همه‌ی اطلاعات این گوشی پاک میشه. قبلش حتماً پشتیبان بگیر.</p><button class="btn danger" data-a="reset">پاک کردن همه‌چیز</button>`)}
-      <div class="center tiny faint" style="margin-top:14px">سوگل · نسخه ۱.۱ · آفلاین و خصوصی</div>`;
+      <div class="center tiny faint" style="margin-top:14px">سوگل · نسخه ۱.۲ · آفلاین و خصوصی</div>`;
   }
   const installHtml = () => `<div class="install">۱. این صفحه رو در <b>Safari</b> باز کن.<br>۲. دکمه‌ی اشتراک‌گذاری ${ic('share')} پایین صفحه رو بزن.<br>۳. گزینه‌ی <b>Add to Home Screen</b> (افزودن به صفحه اصلی) رو انتخاب کن.<br>۴. از این به بعد اپ رو از آیکون سوگل روی صفحه اصلی باز کن.<br><span class="tiny muted">مهم: اطلاعات نسخه‌ی نصب‌شده جدا از Safari نگه داشته میشه؛ فایل شخصی رو داخل اپ نصب‌شده وارد کن.</span></div>`;
 
@@ -799,7 +805,7 @@
     const h = id ? S.habits.find((x) => x.id === id) : null;
     const sh = sheet(`<h3>${h ? 'ویرایش عادت' : 'عادت جدید'}</h3><label class="lbl">نام</label><input id="h-n" type="text" value="${esc(h ? h.name : '')}">
       <label class="lbl">هدف در هفته</label>${opts('per', [1, 2, 3, 4, 5, 6, 7].map((n) => [String(n), fa(n)]), String(h ? h.perWeek : 3))}
-      <label class="lbl">حوزه (برای پیشرفت ماهانه)</label>${opts('cat', D.progressCats.map((c) => [c.id, c.name]), h ? h.cat : 'health')}
+      <label class="lbl">حوزه (برای پیشرفت ماهانه)</label>${opts('cat', PC().map((c) => [c.id, c.name]), h ? h.cat : 'health')}
       <label class="lbl">رنگ</label>${colorOpts(h ? h.color : '#e8a0a8')}${foot(!!h)}`, () => {
       const name = $('#h-n', sh).value.trim(); if (!name) return toast('نام رو بنویس');
       const data = { name, perWeek: +optVal(sh, 'per'), cat: optVal(sh, 'cat'), color: optVal(sh, 'color') || '#e8a0a8' };
@@ -867,6 +873,83 @@
     sh._del = () => { if (x.img) IMG.del(x.img); S.ideas = S.ideas.filter((i) => i !== x); save(); closeSheet(); rerender(); };
   }
 
+
+  /* ================= ویرایشگر عمومی لیست ================= */
+  const ICONS = [['book', 'کتاب'], ['lotus', 'نیلوفر'], ['dumbbell', 'دمبل'], ['sprout', 'جوانه'], ['piggy', 'قلک'], ['utensils', 'قاشق‌چنگال'], ['heart', 'قلب'], ['sun', 'خورشید'], ['moon', 'ماه'], ['palette', 'پالت'], ['star', 'ستاره'], ['leaf', 'برگ'], ['wallet', 'کیف پول'], ['shirt', 'لباس'], ['bulb', 'لامپ'], ['flag', 'پرچم'], ['target', 'هدف'], ['notebook', 'دفتر'], ['sparkle', 'درخشش'], ['clock', 'ساعت']];
+  function fieldHtml(f, v) {
+    const a = `data-k="${f.k}" aria-label="${esc(f.label)}"`;
+    if (f.type === 'select') return `<select ${a}>${f.opts.map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>`;
+    if (f.type === 'color') return `<input type="color" ${a} value="${esc(v || '#e8a0a8')}">`;
+    if (f.type === 'time') return `<input type="time" ${a} value="${esc(v || '')}">`;
+    if (f.type === 'num') return `<input type="text" inputmode="numeric" ${a} value="${v ? fa(v) : ''}" placeholder="${esc(f.label)}">`;
+    if (f.type === 'emoji') return `<input type="text" class="emo-in" maxlength="4" ${a} value="${esc(v || '')}" placeholder="😊">`;
+    if (f.type === 'area') return `<textarea rows="2" ${a} placeholder="${esc(f.label)}">${esc(v || '')}</textarea>`;
+    return `<input type="text" ${a} value="${esc(v || '')}" placeholder="${esc(f.label)}">`;
+  }
+  function listEditor(o) {
+    const fields = o.fields, rows = o.rows.map((r) => (typeof r === 'string' ? { x: r } : r));
+    const showLbl = fields.length > 1;
+    const rowHtml = (r, i) => `<div class="le-row" data-i="${i}"><div class="le-f">${fields.map((f) => `<label class="le-c le-${f.type || 'text'}" style="${f.w ? `flex:0 0 ${f.w}` : ''}">${showLbl ? `<span>${esc(f.label)}</span>` : ''}${fieldHtml(f, r[f.k])}</label>`).join('')}</div>
+      <div class="le-b">${o.fixed ? '' : `<button type="button" data-a="leMove" data-n="-1" aria-label="بالا">▲</button><button type="button" data-a="leMove" data-n="1" aria-label="پایین">▼</button><button type="button" class="del" data-a="leDel" aria-label="حذف">${ic('trash')}</button>`}</div></div>`;
+    const sh = sheet(`<h3>${esc(o.title)}</h3>${o.hint ? `<div class="small muted">${o.hint}</div>` : ''}${o.top || ''}
+      <div class="le">${rows.map(rowHtml).join('')}</div>
+      ${o.fixed ? '' : `<button type="button" class="btn soft block" style="margin-top:10px" data-a="leAdd">${ic('plus')} ${esc(o.addLabel || 'افزودن')}</button>`}
+      <div class="foot"><button class="btn ghost" data-a="closeSheet">انصراف</button><button class="btn" data-a="sheetSave">ذخیره</button></div>`, () => {
+      const out = $$('.le-row', sh).map((el) => {
+        const i = el.dataset.i, base = i === 'n' ? { ...(o.blank || {}) } : { ...rows[+i] };
+        fields.forEach((f) => { const inp = $(`[data-k="${f.k}"]`, el); base[f.k] = f.type === 'num' ? num(inp.value) : inp.value.trim(); });
+        base._new = i === 'n';
+        return base;
+      }).filter((r) => String(r[fields[o.main || 0].k] ?? '').trim() !== '');
+      const res = o.onSave(out.map((r) => { const n = r._new; delete r._new; if (n && o.newId) r.id = o.newId(); return r; }), sh);
+      if (res === false) return;
+      save(); closeSheet(); rerender(); toast('ذخیره شد');
+    });
+    sh._newRow = () => { const w = document.createElement('div'); w.innerHTML = rowHtml(o.blank || {}, 'n'); const r = w.firstElementChild; $('.le', sh).append(r); const f = $('input,textarea', r); if (f) f.focus(); };
+    return sh;
+  }
+  const strRows = (arr) => arr.map((x) => ({ x }));
+  function editProfile() {
+    const sh = sheet(`<h3>متن‌های اصلی</h3>
+      <label class="lbl">نام</label><input id="pf-n" type="text" value="${esc(S.profile.name)}">
+      <label class="lbl">عنوان</label><input id="pf-t" type="text" value="${esc(S.profile.title)}">
+      <label class="lbl">شعار زیر عنوان</label><input id="pf-g" type="text" value="${esc(S.profile.tagline)}">
+      <label class="lbl">جمله‌ی انگیزشی ماه</label><textarea id="pf-m" rows="2">${esc(S.profile.motto)}</textarea>${foot()}`, () => {
+      S.profile.name = $('#pf-n', sh).value.trim() || S.profile.name; S.profile.title = $('#pf-t', sh).value.trim(); S.profile.tagline = $('#pf-g', sh).value.trim(); S.profile.motto = $('#pf-m', sh).value.trim();
+      save(); closeSheet(); rerender(); toast('ذخیره شد');
+    });
+  }
+  const catOpts = () => PC().map((c) => [c.id, c.name]);
+  const EDIT = {
+    profile: () => editProfile(),
+    habits: () => listEditor({ title: 'چک‌لیست روزانه', hint: 'نام، تعداد در هفته، حوزه و رنگ هر مورد. با ▲▼ ترتیب رو عوض کن. سابقه‌ی تیک‌ها با حذف یک مورد پاک نمیشه.', rows: S.habits, addLabel: 'مورد جدید',
+      fields: [{ k: 'name', label: 'نام' }, { k: 'perWeek', label: 'در هفته', type: 'select', opts: [1, 2, 3, 4, 5, 6, 7].map((n) => [n, fa(n) + ' بار']), w: '92px' }, { k: 'cat', label: 'حوزه', type: 'select', opts: catOpts() }, { k: 'color', label: 'رنگ', type: 'color', w: '52px' }],
+      blank: { perWeek: 7, cat: 'health', color: '#e8a0a8' }, newId: () => 'h-' + uid(), onSave: (r) => { S.habits = r.map((h) => ({ ...h, perWeek: +h.perWeek || 7 })); } }),
+    routine: () => listEditor({ title: 'برنامه‌ی ثابت روزانه', hint: 'کارهایی که هر روز تکرار میشن. برنامه‌های تقویم (مثل گفتگو) خودکار اضافه میشن.', rows: S.profile.routine || [], addLabel: 'کار جدید',
+      fields: [{ k: 'e', label: 'نشانه', type: 'emoji', w: '56px' }, { k: 't', label: 'ساعت', type: 'time', w: '124px' }, { k: 'x', label: 'کار' }], main: 2, blank: { e: '⏰' }, onSave: (r) => { S.profile.routine = r; } }),
+    redLines: () => listEditor({ title: 'خط قرمزهای ما', rows: strRows(S.profile.redLines || []), fields: [{ k: 'x', label: 'خط قرمز' }], onSave: (r) => { S.profile.redLines = r.map((x) => x.x); } }),
+    quotes: () => listEditor({ title: 'جمله‌های روز', hint: 'هر روز یکی از این جمله‌ها به نوبت نشون داده میشه.', rows: strRows(QUOTES()), fields: [{ k: 'x', label: 'جمله', type: 'area' }], addLabel: 'جمله جدید', onSave: (r) => { S.quotes = r.map((x) => x.x); } }),
+    prompts: () => listEditor({ title: 'سؤال‌های راهنمای یادداشت', rows: strRows(PROMPTS()), fields: [{ k: 'x', label: 'سؤال' }], onSave: (r) => { S.dayPrompts = r.map((x) => x.x); } }),
+    moods: () => listEditor({ title: 'ایموجی‌های حال‌وهوا', hint: 'هر ردیف یک ایموجی.', rows: strRows(MOODS()), fields: [{ k: 'x', label: 'ایموجی', type: 'emoji' }], onSave: (r) => { if (!r.length) { toast('حداقل یک ایموجی لازمه'); return false; } S.moods = r.map((x) => x.x); } }),
+    notecfg: () => sheet(`<h3>ویرایش یادداشت روزانه</h3><div class="btn-row" style="flex-direction:column"><button class="btn soft block" data-a="edit" data-w="prompts">سؤال‌های راهنما</button><button class="btn soft block" data-a="edit" data-w="moods">ایموجی‌های حال‌وهوا</button></div><div class="foot"><button class="btn ghost" data-a="closeSheet">بستن</button></div>`),
+    review: () => listEditor({ title: 'بخش‌های ارزیابی ماه', hint: 'نوشته‌های قبلی هر بخش با تغییر عنوان حفظ میشن.', rows: RFIELDS(), fields: [{ k: 'icon', label: 'آیکون', type: 'select', opts: ICONS, w: '110px' }, { k: 'label', label: 'عنوان' }], main: 1, blank: { icon: 'star' },
+      onSave: (r) => { S.reviewFields = r.map((f) => ({ ...f, k: f.k || 'f-' + uid() })); } }),
+    progress: () => listEditor({ title: 'حوزه‌های پیشرفت ماهانه', hint: 'هر عادت و هدف ماه به یکی از این حوزه‌ها وصله.', rows: PC(), fields: [{ k: 'name', label: 'نام' }, { k: 'color', label: 'رنگ', type: 'color', w: '52px' }], blank: { color: '#c4b0cb' }, newId: () => 'pc-' + uid(),
+      onSave: (r) => { S.progressCats = r; } }),
+    annual: () => listEditor({ title: 'اهداف ثابت سالانه', rows: S.annualGoals, fields: [{ k: 'icon', label: 'آیکون', type: 'select', opts: ICONS, w: '110px' }, { k: 'title', label: 'عنوان' }, { k: 'sub', label: 'توضیح' }], main: 1, blank: { icon: 'star' }, addLabel: 'هدف جدید', onSave: (r) => { S.annualGoals = r; } }),
+    quarters: () => listEditor({ title: 'سه‌ماهه‌ها', fixed: true, rows: S.plan.quarters, fields: [{ k: 'title', label: 'عنوان' }, { k: 'sub', label: 'زیرعنوان' }], onSave: (r) => { if (r.length !== 4) { toast('عنوان هر چهار سه‌ماهه لازمه'); return false; } S.plan.quarters = r; } }),
+    goals: (el) => { const i = +el.dataset.p, p = S.plan.periods[i]; listEditor({ title: `اهداف ماه ${ORD[i]} برنامه`, hint: periodLabel(i), top: `<label class="lbl">تمرکز این ماه</label><input id="le-focus" type="text" value="${esc(p.focus || '')}">`, rows: p.goals, addLabel: 'هدف جدید',
+      fields: [{ k: 'text', label: 'هدف' }, { k: 'cat', label: 'حوزه', type: 'select', opts: catOpts(), w: '120px' }], blank: { cat: 'growth', done: false }, onSave: (r, sh) => { p.goals = r; p.focus = $('#le-focus', sh).value.trim(); } }); },
+    expCats: () => listEditor({ title: 'دسته‌های هزینه', hint: 'سقف بودجه‌ی ماهانه به تومان؛ خالی یعنی بی‌سقف. دسته‌ای که هزینه‌ی ثبت‌شده داره حذف نمیشه.', rows: S.finance.cats,
+      fields: [{ k: 'name', label: 'نام' }, { k: 'budget', label: 'سقف بودجه', type: 'num', w: '110px' }, { k: 'color', label: 'رنگ', type: 'color', w: '52px' }], blank: { color: '#e6d6c3' }, newId: () => 'c-' + uid(),
+      onSave: (r) => { const kept = S.finance.cats.filter((c) => !r.some((x) => x.id === c.id) && S.finance.expenses.some((e) => e.cat === c.id)); if (kept.length) toast(`«${kept[0].name}» هزینه داره و حذف نشد`); S.finance.cats = [...r, ...kept]; } }),
+    shopping: () => listEditor({ title: 'لیست خرید', rows: S.shopping, fields: [{ k: 'text', label: 'مورد' }], blank: { done: false }, newId: uid, onSave: (r) => { S.shopping = r; } }),
+    dayItems: (el) => { const k = el.dataset.k, d = ensureDay(k); listEditor({ title: 'رویدادهای ' + fullDate(k), rows: d.items || [], fields: [{ k: 'emoji', label: 'نشانه', type: 'emoji', w: '56px' }, { k: 'text', label: 'عنوان' }], main: 1, blank: { emoji: '📌' }, newId: uid, onSave: (r) => { d.items = r; } }); },
+    sections: (el) => { const l = S.lists.find((x) => x.id === el.dataset.l); listEditor({ title: 'بخش‌های ' + l.title, hint: 'با حذف یک بخش، موردهای داخلش هم حذف میشن.', rows: l.sections, fields: [{ k: 'title', label: 'عنوان بخش' }], blank: { items: [] }, newId: uid, addLabel: 'بخش جدید', onSave: (r) => { l.sections = r; } }); },
+    secItems: (el) => { const l = S.lists.find((x) => x.id === el.dataset.l), sec = l.sections.find((x) => x.id === el.dataset.s); listEditor({ title: sec.title, rows: sec.items, addLabel: 'مورد جدید',
+      fields: [{ k: 'text', label: 'مورد' }, { k: 'qty', label: 'تعداد', type: 'num', w: '72px' }, { k: 'note', label: 'توضیح' }], blank: { have: 0 }, newId: uid, onSave: (r) => { sec.items = r.map((it) => { const o = { ...it }; if (!o.qty) delete o.qty; if (!o.note) delete o.note; return o; }); } }); }
+  };
+
   /* ---------- پشتیبان ---------- */
   async function exportData() {
     const imgs = {}, ids = [...Object.values(S.photos), ...S.ideas.map((i) => i.img)].filter(Boolean);
@@ -900,6 +983,7 @@
     } else if (o.type === 'sogol-update') {
       if (o.profile) Object.assign(S.profile, o.profile);
       if (o.annualGoals) S.annualGoals = o.annualGoals;
+      (o.annualGoalsAdd || []).forEach((g) => { if (!S.annualGoals.some((x) => x.title === g.title)) S.annualGoals.push(g); });
       if (o.mealPlan) S.mealPlan = o.mealPlan;
       (o.events || []).forEach((e) => { const ex = S.events.find((x) => x.id === e.id); if (ex) { Object.keys(ex).forEach((k) => k !== 'id' && delete ex[k]); Object.assign(ex, e); } else S.events.push({ ...e, id: e.id || uid() }); });
       (o.habits || []).forEach((h) => { const ex = S.habits.find((x) => x.id === h.id); if (ex) Object.assign(ex, h); else S.habits.push({ ...h }); });
@@ -978,6 +1062,10 @@
         S = fresh(); IMG.cache = {}; closeSheet(); render();
       });
     },
+    edit: (el) => { const f = EDIT[el.dataset.w]; if (f) f(el); },
+    leAdd: (el) => { const sh = el.closest('.sheet'); sh && sh._newRow && sh._newRow(); },
+    leDel: (el) => el.closest('.le-row').remove(),
+    leMove: (el) => { const r = el.closest('.le-row'); if (+el.dataset.n < 0 && r.previousElementSibling) r.parentElement.insertBefore(r, r.previousElementSibling); else if (+el.dataset.n > 0 && r.nextElementSibling) r.parentElement.insertBefore(r.nextElementSibling, r); },
     opt: (el) => { if (el.parentElement.dataset.multi) el.classList.toggle('on'); else $$('button', el.parentElement).forEach((b) => b.classList.toggle('on', b === el)); const sh = el.closest('.sheet'); if (sh && sh._sync) sh._sync(); },
     closeSheet: () => closeSheet(),
     sheetSave: () => sheetDone && sheetDone(),
