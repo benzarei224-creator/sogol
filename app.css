@@ -436,3 +436,15 @@ label.lbl { display: block; font-size: 12.5px; font-weight: 700; color: var(--in
 .le-b button.del { color: var(--danger); background: #fbe3e6; }
 .le-b button svg { width: 15px; height: 15px; }
 .quote .when button, .motto button, .ev .t[data-a] { cursor: pointer; }
+
+/* ---------- v1.3: تیک برنامه امروز، امتیاز روز ---------- */
+.rrow .ring { width: 26px; height: 26px; }
+.rrow.done .t { color: var(--ink-faint); text-decoration: line-through; text-decoration-color: var(--sage); }
+.score { background: linear-gradient(120deg, #fffaf8, #fbefee); }
+.reminder .chip { cursor: pointer; }
+/* iOS: تپ روی عناصر غیرلینکی فقط با cursor:pointer رویداد click می‌فرستد */
+[data-a] { cursor: pointer; }
+.sheet-top { position: sticky; top: -8px; z-index: 3; background: var(--paper); margin: -8px -16px 4px; padding: 8px 16px 2px; display: flex; align-items: center; justify-content: center; }
+.sheet-top .grab { margin: 4px auto 6px; }
+.sheet-x { position: absolute; left: 12px; top: 8px; width: 34px; height: 34px; border-radius: 50%; background: var(--rose-pale); border: 1px solid var(--line); color: var(--rose-deep); display: grid; place-items: center; }
+.sheet-x svg { width: 18px; height: 18px; }
